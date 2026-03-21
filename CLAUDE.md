@@ -24,7 +24,7 @@ docker compose build                        # rebuild after code changes
 |------|------|
 | `src/index.ts` | CLI entry point; interactive `select` prompts via `@inquirer/prompts` |
 | `src/resolver.ts` | Creates a temp dir, runs `npm install` to materialise the full dependency tree, walks `node_modules` to collect all resolved packages, then runs `npm audit` |
-| `src/downloader.ts` | Iterates resolved packages, runs `npm pack <name>@<version>` for each, zips all tarballs + `METADATA.json` via `archiver` |
+| `src/downloader.ts` | Iterates resolved packages, runs `npm pack <name>@<version>` for each, zips all tarballs + `metadata.json` via `archiver` |
 | `src/types.ts` | All shared TypeScript interfaces (`PackageJson`, `ResolvedPackage`, `AuditReport`, `PackageMetadata`, etc.) |
 
 ## Architectural decisions
@@ -39,7 +39,7 @@ docker compose build                        # rebuild after code changes
 
 **`--no-audit` on `npm install`, explicit `npm audit --json` after** — `--no-audit` only suppresses the inline install-time report; it does not affect `package-lock.json`. Running `npm audit --json` separately after install reads the lock file and always produces accurate results.
 
-**`METADATA.json` (uppercase)** — archive viewers sort entries alphabetically. Uppercase ASCII (65–90) sorts before lowercase (97–122). All npm tarballs are lowercase, so `METADATA.json` always appears first in the archive.
+**`metadata.json`** — embedded in every archive alongside the tarballs.
 
 ## Known gotchas
 
@@ -56,10 +56,10 @@ docker compose build                        # rebuild after code changes
 Each `output/<id>.zip` contains:
 
 ```
-METADATA.json          ← always first (uppercase sorts before tarballs)
+metadata.json
 express-4.18.2.tgz
 lodash-4.17.21.tgz
 ...
 ```
 
-`METADATA.json` fields: `startedAt`, `completedAt`, `summary` (total/succeeded/failed), `audit` (severity counts + `highPackages`/`criticalPackages` as `{name, version}[]`), `packages` (succeeded), `failedPackages` (with error message).
+`metadata.json` fields: `startedAt`, `completedAt`, `summary` (total/succeeded/failed), `audit` (severity counts + `highPackages`/`criticalPackages` as `{name, version}[]`), `packages` (succeeded), `failedPackages` (with error message).

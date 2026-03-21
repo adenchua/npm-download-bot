@@ -84,7 +84,7 @@ function createZip(tgzDir: string, metadata: PackageMetadata, zipPath: string): 
     }
 
     // Add metadata.json
-    archive.append(JSON.stringify(metadata, null, 2), { name: 'METADATA.json' });
+    archive.append(JSON.stringify(metadata, null, 2), { name: 'metadata.json' });
 
     archive.finalize();
   });

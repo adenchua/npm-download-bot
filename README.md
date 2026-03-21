@@ -9,7 +9,7 @@ A CLI tool that resolves all transitive npm dependencies from a `package.json` a
 - **Vulnerability audit** — runs `npm audit` and embeds severity counts plus HIGH/CRITICAL package details into the output
 - **Batch processing** — drop multiple `package.json` files into `input/` and process them all in one run
 - **Scoped package support** — handles `@scope/pkg` packages correctly
-- **Detailed metadata** — every archive includes a `METADATA.json` with timestamps, download summary, and audit results
+- **Detailed metadata** — every archive includes a `metadata.json` with timestamps, download summary, and audit results
 
 ## Prerequisites
 
@@ -119,14 +119,14 @@ Each `.zip` contains:
 
 ```
 my-project.zip
-├── METADATA.json
+├── metadata.json
 ├── express-4.18.2.tgz
 ├── lodash-4.17.21.tgz
 ├── accepts-1.3.8.tgz
 └── ... (all transitive dependencies)
 ```
 
-### METADATA.json
+### metadata.json
 
 ```json
 {
@@ -192,7 +192,7 @@ npm-download-bot/
 1. **Resolve** — writes a merged `package.json` to a temp directory and runs `npm install --ignore-scripts` to materialise the full dependency tree
 2. **Audit** — runs `npm audit --json` against the installed lock file and extracts vulnerability counts and HIGH/CRITICAL package names
 3. **Download** — runs `npm pack <name>@<version>` for every resolved package and collects the `.tgz` files
-4. **Package** — zips all tarballs together with `METADATA.json` into `output/<id>.zip`
+4. **Package** — zips all tarballs together with `metadata.json` into `output/<id>.zip`
 5. **Cleanup** — removes the temp directory
 
 ## License
