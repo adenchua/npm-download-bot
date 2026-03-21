@@ -3,7 +3,13 @@ services:
     build: ./npm-download-service
     env_file: ./npm-download-service/.env
     ports:
-      - "${SERVER_PORT:-3000}:3000"
+      - "0.0.0.0:${SERVER_PORT:-3000}:3000"
     volumes:
       - ./npm-download-service/input:/app/input
       - ./npm-download-service/output:/app/output
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
