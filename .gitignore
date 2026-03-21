@@ -42,9 +42,9 @@ build/Release
 node_modules/
 jspm_packages/
 
-# npm-download-bot I/O directories
-input/
-output/
+# npm-download-service I/O directories
+npm-download-service/input/
+npm-download-service/output/
 
 # macOS artifacts
 .DS_Store
@@ -99,7 +99,7 @@ out
 
 # Nuxt.js build / generate output
 .nuxt
-dist
+npm-download-service/dist
 
 # Gatsby files
 .cache/
