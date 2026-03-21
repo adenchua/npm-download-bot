@@ -1,15 +1,15 @@
 # npm-download-bot
 
-A CLI tool that resolves all transitive npm dependencies from a `package.json` and packages them into a self-contained `.zip` archive for offline installation. Useful for air-gapped environments, dependency snapshots, and supply chain audits.
+An HTTP service that resolves all transitive npm dependencies from a `package.json` and packages them into a self-contained `.zip` archive for offline installation. Useful for air-gapped environments, dependency snapshots, and supply chain audits.
 
 ## Features
 
 - **Full dependency resolution** — installs into a temporary directory to resolve the complete transitive dependency tree
 - **Offline-ready archives** — each resolved package is downloaded as a `.tgz` tarball via `npm pack` and bundled into a `.zip`
 - **Vulnerability audit** — runs `npm audit` and embeds severity counts plus HIGH/CRITICAL package details into the output
-- **Batch processing** — drop multiple `package.json` files into `input/` and process them all in one run
+- **REST API** — upload a `package.json`, list uploaded files, and trigger download jobs over HTTP
 - **Scoped package support** — handles `@scope/pkg` packages correctly
-- **Detailed metadata** — every archive includes a `metadata.json` with timestamps, download summary, and audit results
+- **Detailed metadata** — every archive includes a `metadata.json` with local-time timestamps, download summary, and audit results
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ A CLI tool that resolves all transitive npm dependencies from a `package.json` a
 
 ```bash
 git clone https://github.com/your-org/npm-download-bot.git
-cd npm-download-bot
+cd npm-download-bot/npm-download-service
 npm install
 ```
 
@@ -28,72 +28,51 @@ npm install
 
 No Node.js required on the host. Uses bind mounts so your local `input/` and `output/` folders are shared with the container.
 
-### Run (first time builds the image automatically)
-
 ```bash
-docker compose run --rm npm-download-bot
+cd npm-download-service
+docker compose up          # starts the HTTP server
+docker compose build       # rebuild after code changes
 ```
-
-### Subsequent runs
-
-```bash
-docker compose run --rm npm-download-bot
-```
-
-Drop your `package.json` files into the local `input/` folder before running. Output `.zip` archives will appear in your local `output/` folder.
-
-> `docker compose run` allocates a TTY automatically — required for the interactive prompt.
-> To rebuild after code changes: `docker compose build`
 
 ## Usage
 
-### 1. Add input files
-
-Place one or more `package.json` files into the `input/` directory. The filename (without extension) becomes the archive ID.
-
-```
-input/
-  my-project.json
-  another-app.json
-```
-
-### 2. Run
+### Start the server
 
 ```bash
-npm start
+npm start   # listens on SERVER_PORT (default 3000)
 ```
 
-An interactive prompt will appear:
+### API
 
-```
-? What would you like to do?
-❯ Download all files (2 found)
-  Download a specific file
-```
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check; returns `{ status, timestamp }` |
+| `POST` | `/upload` | Upload a `package.json` body; returns `{ id }` |
+| `GET` | `/files` | List uploaded files |
+| `GET` | `/files?showToday=true` | List only files uploaded today (local time) |
+| `POST` | `/jobs` | Start a download job; body `{ id }` |
 
-Selecting **Download a specific file** shows a second prompt to choose which file:
+### Typical workflow
 
-```
-? Select a file to download:
-❯ my-project.json
-  another-app.json
-```
-
-### 3. Collect output
-
-Each input file produces a `.zip` archive in `output/`:
-
-```
-output/
-  my-project.zip
-  another-app.zip
-```
-
-### Built binary (after `npm run build`)
+**1. Upload a `package.json`:**
 
 ```bash
-npm-dl
+curl -X POST http://localhost:3000/upload \
+  -H 'Content-Type: application/json' \
+  -d @my-project.json
+# → { "id": "20260321-1000-<uuid>" }
 ```
+
+**2. Trigger a download job:**
+
+```bash
+curl -X POST http://localhost:3000/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{ "id": "20260321-1000-<uuid>" }'
+# → 202 Accepted; job runs in the background
+```
+
+**3. Collect output** — the `.zip` archive appears in `output/<id>.zip` when the job completes.
 
 ## Input format
 
@@ -130,8 +109,8 @@ my-project.zip
 
 ```json
 {
-  "startedAt": "2026-03-21T10:00:00.000Z",
-  "completedAt": "2026-03-21T10:02:34.123Z",
+  "startedAt": "2026-03-21T10:00:00+09:00",
+  "completedAt": "2026-03-21T10:02:34+09:00",
   "summary": {
     "total": 120,
     "succeeded": 118,
@@ -167,33 +146,42 @@ my-project.zip
 
 ```
 npm-download-bot/
-├── src/
-│   ├── index.ts        # CLI entry point (interactive prompts)
-│   ├── resolver.ts     # Dependency resolution + npm audit
-│   ├── downloader.ts   # npm pack + zip creation
-│   └── types.ts        # Shared TypeScript interfaces
-├── input/              # Drop package.json files here
-├── output/             # Generated .zip archives
-├── Dockerfile
-├── docker-compose.yml
-├── package.json
-└── tsconfig.json
+└── npm-download-service/
+    ├── src/
+    │   ├── index.ts              # HTTP server entry point
+    │   ├── app.ts                # Express app factory
+    │   ├── resolver.ts           # Dependency resolution + npm audit
+    │   ├── downloader.ts         # npm pack + zip creation
+    │   ├── types.ts              # Shared TypeScript interfaces
+    │   ├── routes/
+    │   │   ├── files.ts          # POST /upload, GET /files
+    │   │   └── jobs.ts           # POST /jobs
+    │   └── middleware/
+    │       └── errorHandler.ts
+    ├── input/                    # Uploaded package.json files
+    ├── output/                   # Generated .zip archives
+    ├── Dockerfile
+    ├── docker-compose.yml
+    └── package.json
 ```
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm start` | Launch interactive prompt (no build step) |
+| `npm start` | Start HTTP server (no build step) |
+| `npm run dev` | Start with file watching |
 | `npm run build` | Compile TypeScript to `dist/` |
 
 ## How it works
 
-1. **Resolve** — writes a merged `package.json` to a temp directory and runs `npm install --ignore-scripts` to materialise the full dependency tree
-2. **Audit** — runs `npm audit --json` against the installed lock file and extracts vulnerability counts and HIGH/CRITICAL package names
-3. **Download** — runs `npm pack <name>@<version>` for every resolved package and collects the `.tgz` files
-4. **Package** — zips all tarballs together with `metadata.json` into `output/<id>.zip`
-5. **Cleanup** — removes the temp directory
+1. **Upload** — `POST /upload` saves the `package.json` body to `input/<id>.json` and returns the ID
+2. **Trigger** — `POST /jobs` starts a background job for that ID
+3. **Resolve** — writes a merged `package.json` to a temp directory and runs `npm install --ignore-scripts` to materialise the full dependency tree
+4. **Audit** — runs `npm audit --json` against the installed lock file and extracts vulnerability counts and HIGH/CRITICAL package names
+5. **Download** — runs `npm pack <name>@<version>` for every resolved package and collects the `.tgz` files
+6. **Package** — zips all tarballs together with `metadata.json` into `output/<id>.zip`
+7. **Cleanup** — removes the temp directory
 
 ## License
 

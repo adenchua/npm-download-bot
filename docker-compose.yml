@@ -1,0 +1,9 @@
+services:
+  npm-download-service:
+    build: ./npm-download-service
+    env_file: ./npm-download-service/.env
+    ports:
+      - "${SERVER_PORT:-3000}:3000"
+    volumes:
+      - ./npm-download-service/input:/app/input
+      - ./npm-download-service/output:/app/output

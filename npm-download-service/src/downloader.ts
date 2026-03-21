@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import archiver from 'archiver';
+import { formatISO } from 'date-fns';
 import { AuditReport, PackageMetadata, ResolvedPackage } from './types';
 
 function tarballName(name: string, version: string): string {
@@ -22,7 +23,7 @@ export async function downloadAndZip(packages: ResolvedPackage[], id: string, au
   let failed = 0;
   const downloaded: PackageMetadata['packages'] = [];
   const failedPackages: PackageMetadata['failedPackages'] = [];
-  const startedAt = new Date().toISOString();
+  const startedAt = formatISO(new Date());
 
   try {
     for (const pkg of packages) {
@@ -48,7 +49,7 @@ export async function downloadAndZip(packages: ResolvedPackage[], id: string, au
 
     const metadata: PackageMetadata = {
       startedAt,
-      completedAt: new Date().toISOString(),
+      completedAt: formatISO(new Date()),
       summary: {
         total: packages.length,
         succeeded,
