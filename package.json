@@ -1,0 +1,23 @@
+{
+  "name": "npm-download-bot",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "bin": {
+    "npm-dl": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.0.0",
+    "archiver": "^7.0.1"
+  },
+  "devDependencies": {
+    "@types/archiver": "^6.0.3",
+    "@types/node": "^25.5.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.9.3"
+  }
+}

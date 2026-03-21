@@ -1,0 +1,8 @@
+services:
+  npm-download-bot:
+    build: .
+    stdin_open: true   # keeps stdin open (-i)
+    tty: true          # allocates a TTY (-t) — required for interactive prompts
+    volumes:
+      - ./input:/app/input
+      - ./output:/app/output
