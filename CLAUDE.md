@@ -5,28 +5,29 @@
 | Directory | Role |
 |-----------|------|
 | `npm-download-service/` | HTTP service that resolves and bundles npm dependencies as offline `.zip` archives |
+| `telegram-bot/` | Telegram bot for submitting download requests and managing user access |
+| `database/` | MongoDB schema definitions and init scripts |
 
-## Project overview — npm-download-service
+## Docker Compose
 
-HTTP service that resolves all transitive npm dependencies from a `package.json` and bundles every package as a `.tgz` tarball into an offline-ready `.zip` archive. Includes an embedded vulnerability audit report.
+Four services with explicit health-check dependencies:
 
-```bash
-cd npm-download-service
-npm install
-npm start   # starts HTTP server on SERVER_PORT (default 3000)
+```
+npm-download-service  (health: GET /health)
+mongodb               (health: mongosh ping)   ← initialised by database/init/01-init.js on first run
+  └── telegram-bot    (depends on mongodb + npm-download-service, both healthy)
+  └── mongo-express   (depends on mongodb, healthy)
 ```
 
-### Docker
+Volume mounts:
+- `npm-download-service/input/` and `output/` → `/app/input` and `/app/output`
+- `database/data/` → `/data/db` (MongoDB persistence)
+- `database/init/` → `/docker-entrypoint-initdb.d/` (runs once on init)
+- `database/schemas/` → `/schemas/` (read by init script)
 
-```bash
-cd npm-download-service
-docker compose up        # starts the HTTP server; bind mounts input/ and output/
-docker compose build     # rebuild after code changes
-```
+`NPM_DOWNLOAD_SERVICE_URL` is injected directly via `environment:` in the compose file so the telegram-bot always resolves to `http://npm-download-service:3000` inside Docker, regardless of what is in `telegram-bot/.env`.
 
-The container requires outbound internet access to reach the npm registry.
-
-## Source map
+## npm-download-service source map
 
 | File | Role |
 |------|------|
@@ -35,9 +36,29 @@ The container requires outbound internet access to reach the npm registry.
 | `npm-download-service/src/routes/files.ts` | `POST /upload` and `GET /files` (with `?showToday` filter) |
 | `npm-download-service/src/routes/jobs.ts` | `POST /jobs` — fire-and-forget download job |
 | `npm-download-service/src/middleware/errorHandler.ts` | Global Express error handler |
-| `npm-download-service/src/resolver.ts` | Creates a temp dir, runs `npm install` to materialise the full dependency tree, walks `node_modules` to collect all resolved packages, then runs `npm audit` |
+| `npm-download-service/src/resolver.ts` | Creates a temp dir, runs `npm install` to materialise the full dependency tree, walks `node_modules`, then runs `npm audit` |
 | `npm-download-service/src/downloader.ts` | Iterates resolved packages, runs `npm pack <name>@<version>` for each, zips all tarballs + `metadata.json` via `archiver` |
 | `npm-download-service/src/types.ts` | All shared TypeScript interfaces (`PackageJson`, `ResolvedPackage`, `AuditReport`, `PackageMetadata`, etc.) |
+
+## telegram-bot source map
+
+| File | Role |
+|------|------|
+| `telegram-bot/src/index.ts` | Bot entry point; registers middleware (session → cancel → stage), all command handlers, startup validation of env vars and DB indexes |
+| `telegram-bot/src/db/index.ts` | MongoDB connection management (`connectDb`, `getDb`, `closeDb`) |
+| `telegram-bot/src/db/clients.ts` | `clients` collection: `registerClient`, `approveClient`, `getClientByTelegramId`, `verifyIndexes` |
+| `telegram-bot/src/db/subscribers.ts` | `subscribers` collection: `addSubscriber`, `removeSubscriber`, `verifyIndexes` |
+| `telegram-bot/src/commands/helpers.ts` | Shared `BotContext` type, `getText`, `requireText`, `checkSecret` — imported by all command files |
+| `telegram-bot/src/commands/approveClient.ts` | 3-step wizard: prompt secret → validate → prompt ID/username → approve |
+| `telegram-bot/src/commands/subscribe.ts` | Two 2-step wizards: `subscribeScene` and `unsubscribeScene` |
+
+## database source map
+
+| File | Role |
+|------|------|
+| `database/schemas/clients.json` | Collection + unique index definition for `clients` |
+| `database/schemas/subscribers.json` | Collection + unique index definition for `subscribers` |
+| `database/init/01-init.js` | mongosh init script; reads every `*.json` from `/schemas`, creates collections and indexes |
 
 ## Architectural decisions
 
@@ -55,6 +76,18 @@ The container requires outbound internet access to reach the npm registry.
 
 **`metadata.json`** — embedded in every archive alongside the tarballs.
 
+**Schema-driven DB initialisation** — `database/schemas/*.json` are the single source of truth for collection structure. `database/init/01-init.js` reads all JSON files generically on first MongoDB startup; adding a new collection means adding one JSON file with no changes to the init script.
+
+**`$setOnInsert` upsert for idempotent registration** — `registerClient` and `addSubscriber` use `updateOne({ telegramId }, { $setOnInsert: data }, { upsert: true })`. Re-registering returns `upsertedCount === 0` and is a complete no-op in the database; the original document is never overwritten.
+
+**`verifyIndexes()` at startup** — both `clients.ts` and `subscribers.ts` expose a `verifyIndexes()` function that checks for the required unique index by name. Both are called in `main()` before `bot.launch()`. The bot refuses to start if the indexes are missing, which catches the case where the DB volume predates the init scripts.
+
+**`APPROVE_SECRET` as an admin gate** — the secret is read from `process.env.APPROVE_SECRET` once at module load in `commands/helpers.ts`. All commands that require it start a wizard conversation: the bot prompts for the secret as the first step and validates it before proceeding.
+
+**`/cancel` middleware ordering** — the cancel command is registered on the bot after `session()` but before `stage.middleware()`. This ensures it intercepts `/cancel` before any active scene's step handlers can consume the message. It reads `ctx.session.__scenes.current` (via the typed `Scenes.WizardSession` cast) to detect whether a scene is active.
+
+**Shared wizard helpers** — `BotContext`, `getText`, `requireText`, and `checkSecret` live in `commands/helpers.ts` and are imported by all command files. This eliminates duplication of the secret-validation pattern across scenes.
+
 ## Known gotchas
 
 - **`npm audit` exits with code 1** when vulnerabilities are found. `stdout` is still valid JSON. Always catch the error and read `err.stdout`; do not treat a non-zero exit as a failure.
@@ -65,7 +98,11 @@ The container requires outbound internet access to reach the npm registry.
 
 - **`devDependencies` are included** — `resolver.ts` merges `dependencies` and `devDependencies` before resolving. This is intentional; the tool targets full project snapshots.
 
-## Output structure
+- **`verifyIndexes` requires DB init** — if the MongoDB data volume already exists from before the init scripts were added, the required indexes will be absent and the bot will refuse to start. Run `docker compose down -v && docker compose up` to re-initialise the database.
+
+- **`/cancel` uses `delete wizardSession.__scenes.current`** — assigning `{}` to `__scenes` fails TypeScript because `WizardSessionData.cursor` is a required field. Deleting only the `current` key is the correct approach; it removes the scene marker without touching other session data.
+
+## Output structure (npm-download-service)
 
 Each `output/<id>.zip` contains:
 

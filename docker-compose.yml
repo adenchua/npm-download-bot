@@ -2,6 +2,8 @@ services:
   npm-download-service:
     build: ./npm-download-service
     env_file: ./npm-download-service/.env
+    environment:
+      TZ: Asia/Singapore
     ports:
       - "0.0.0.0:${SERVER_PORT:-3000}:3000"
     volumes:
@@ -13,3 +15,39 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  mongodb:
+    image: mongo:8
+    env_file: ./database/.env
+    volumes:
+      - ./database/data:/data/db
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+      - ./database/schemas:/schemas:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  telegram-bot:
+    build: ./telegram-bot
+    env_file: ./telegram-bot/.env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      npm-download-service:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Singapore
+      NPM_DOWNLOAD_SERVICE_URL: http://npm-download-service:3000
+    restart: unless-stopped
+
+  mongo-express:
+    image: mongo-express:1
+    env_file: ./database/.env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "0.0.0.0:8081:8081"

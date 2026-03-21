@@ -1,0 +1,9 @@
+{
+  "collection": "subscribers",
+  "indexes": [
+    {
+      "key": { "telegramId": 1 },
+      "options": { "unique": true, "name": "subscriber" }
+    }
+  ]
+}
