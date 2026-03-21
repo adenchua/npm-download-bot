@@ -9,8 +9,9 @@ Telegram bot interface for submitting npm package download requests and managing
 | `/start` | Welcome message | — |
 | `/help` | List all commands | — |
 | `/register` | Register your account (sets `isApproved: false`; an admin must approve before you can submit requests) | — |
-| `/subscribe` | Subscribe to notifications | `APPROVE_SECRET` |
-| `/unsubscribe` | Unsubscribe from notifications | `APPROVE_SECRET` |
+| `/request` | Submit a `package.json` (file or pasted text) to queue an npm package download job; replies with the job ID and notifies all subscribers | Registered + approved |
+| `/subscribe` | Subscribe to job notifications | `APPROVE_SECRET` |
+| `/unsubscribe` | Unsubscribe from job notifications | `APPROVE_SECRET` |
 | `/approve_client` | Approve a registered client by Telegram ID or username | `APPROVE_SECRET` |
 | `/cancel` | Cancel the current active conversation | — |
 

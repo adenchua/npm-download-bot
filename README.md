@@ -50,6 +50,8 @@ docker compose down            # stop all services (data is preserved)
 docker compose down -v         # stop and delete all data volumes (DB init runs again on next start)
 ```
 
+> **Note:** `database/data/` is a bind-mounted host directory, not a Docker named volume. `docker compose down -v` does **not** clear it. To fully reset the database (e.g. after changing credentials), delete it manually: `rm -rf database/data/`.
+
 ## Viewing logs
 
 ```bash
