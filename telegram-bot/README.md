@@ -2,14 +2,23 @@
 
 Telegram bot interface for submitting npm package download requests and managing user access.
 
+## Submitting a request
+
+Registered and approved users can submit a `package.json` in two ways:
+
+- **Directly** — send a `package.json` file or paste JSON text containing `dependencies`/`devDependencies` at any time. The bot detects it automatically and starts a job without requiring a command.
+- **Via `/request`** — the bot prompts you to send the file or text, then processes it the same way.
+
+Both paths reply with the job ID and notify all subscribers.
+
 ## Commands
 
 | Command | Description | Auth |
 |---------|-------------|------|
 | `/start` | Welcome message | — |
-| `/help` | List all commands | — |
+| `/help` | List commands | — |
 | `/register` | Register your account (sets `isApproved: false`; an admin must approve before you can submit requests) | — |
-| `/request` | Submit a `package.json` (file or pasted text) to queue an npm package download job; replies with the job ID and notifies all subscribers | Registered + approved |
+| `/request` | Prompted flow: submit a `package.json` (file or pasted text) to queue a download job | Registered + approved |
 | `/subscribe` | Subscribe to job notifications | `APPROVE_SECRET` |
 | `/unsubscribe` | Unsubscribe from job notifications | `APPROVE_SECRET` |
 | `/approve_client` | Approve a registered client by Telegram ID or username | `APPROVE_SECRET` |

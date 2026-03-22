@@ -47,6 +47,44 @@ async function resolvePackageJson(ctx: BotContext): Promise<Record<string, unkno
   return pkg;
 }
 
+export async function processPackageJsonRequest(
+  ctx: BotContext,
+  pkg: Record<string, unknown>,
+): Promise<void> {
+  let id: string;
+  try {
+    const uploadRes = await fetch(`${serviceUrl}/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pkg),
+    });
+    if (!uploadRes.ok) throw new Error(`HTTP ${uploadRes.status}`);
+    ({ id } = (await uploadRes.json()) as { id: string });
+  } catch (err) {
+    console.error('Upload error:', err);
+    await ctx.reply('Failed to upload package.json. Please try again later.');
+    return;
+  }
+
+  try {
+    await fetch(`${serviceUrl}/jobs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+  } catch (err) {
+    console.error('Job start error:', err);
+  }
+
+  await ctx.reply(`Job started! Your download ID is:\n\`${id}\``, { parse_mode: 'Markdown' });
+
+  const subscribers = await getAllSubscribers();
+  const notification = `New download job started by @${ctx.from!.username ?? ctx.from!.id}:\n\`${id}\``;
+  await Promise.allSettled(
+    subscribers.map((s) => ctx.telegram.sendMessage(s.telegramId, notification, { parse_mode: 'Markdown' })),
+  );
+}
+
 export const requestScene = new Scenes.WizardScene<BotContext>(
   REQUEST_SCENE_ID,
 
@@ -60,40 +98,7 @@ export const requestScene = new Scenes.WizardScene<BotContext>(
   async (ctx) => {
     const pkg = await resolvePackageJson(ctx);
     if (pkg === null) return;
-
-    let id: string;
-    try {
-      const uploadRes = await fetch(`${serviceUrl}/upload`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pkg),
-      });
-      if (!uploadRes.ok) throw new Error(`HTTP ${uploadRes.status}`);
-      ({ id } = (await uploadRes.json()) as { id: string });
-    } catch (err) {
-      console.error('Upload error:', err);
-      await ctx.reply('Failed to upload package.json. Please try again later.');
-      return ctx.scene.leave();
-    }
-
-    try {
-      await fetch(`${serviceUrl}/jobs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-    } catch (err) {
-      console.error('Job start error:', err);
-    }
-
-    await ctx.reply(`Job started! Your download ID is:\n\`${id}\``, { parse_mode: 'Markdown' });
-
-    const subscribers = await getAllSubscribers();
-    const notification = `New download job started by @${ctx.from!.username ?? ctx.from!.id}:\n\`${id}\``;
-    await Promise.allSettled(
-      subscribers.map((s) => ctx.telegram.sendMessage(s.telegramId, notification, { parse_mode: 'Markdown' })),
-    );
-
+    await processPackageJsonRequest(ctx, pkg);
     return ctx.scene.leave();
   },
 );

@@ -44,14 +44,14 @@ Volume mounts:
 
 | File | Role |
 |------|------|
-| `telegram-bot/src/index.ts` | Bot entry point; registers middleware (session → cancel → stage), all command handlers, startup validation of env vars and DB indexes |
+| `telegram-bot/src/index.ts` | Bot entry point; registers middleware (session → cancel → stage), all command handlers, `bot.on('message')` passive package.json handler, startup validation of env vars and DB indexes |
 | `telegram-bot/src/db/index.ts` | MongoDB connection management (`connectDb`, `getDb`, `closeDb`) |
 | `telegram-bot/src/db/clients.ts` | `clients` collection: `registerClient`, `approveClient`, `getClientByTelegramId`, `verifyIndexes` |
 | `telegram-bot/src/db/subscribers.ts` | `subscribers` collection: `addSubscriber`, `removeSubscriber`, `getAllSubscribers`, `verifyIndexes` |
 | `telegram-bot/src/commands/helpers.ts` | Shared `BotContext` type, `getText`, `requireText`, `checkSecret` — imported by all command files |
 | `telegram-bot/src/commands/approveClient.ts` | 3-step wizard: prompt secret → validate → prompt ID/username → approve |
 | `telegram-bot/src/commands/subscribe.ts` | Two 2-step wizards: `subscribeScene` and `unsubscribeScene` |
-| `telegram-bot/src/commands/request.ts` | 2-step wizard: prompt for `package.json` → validate → `POST /upload` → `POST /jobs` → reply job ID → notify all subscribers |
+| `telegram-bot/src/commands/request.ts` | 2-step wizard: prompt for `package.json` → validate → `POST /upload` → `POST /jobs` → reply job ID → notify all subscribers. Exports `processPackageJsonRequest(ctx, pkg)` — shared by the wizard and the passive message handler in `index.ts` |
 
 ## database source map
 
@@ -90,6 +90,10 @@ Volume mounts:
 **`/cancel` middleware ordering** — the cancel command is registered on the bot after `session()` but before `stage.middleware()`. This ensures it intercepts `/cancel` before any active scene's step handlers can consume the message. It reads `ctx.session.__scenes.current` (via the typed `Scenes.WizardSession` cast) to detect whether a scene is active.
 
 **Shared wizard helpers** — `BotContext`, `getText`, `requireText`, and `checkSecret` live in `commands/helpers.ts` and are imported by all command files. This eliminates duplication of the secret-validation pattern across scenes.
+
+**Passive package.json detection** — `index.ts` registers a `bot.on('message')` handler (after all commands) that automatically processes messages as a `/request` without the user typing a command. It triggers when a registered+approved user sends either a document named `package.json` or text starting with `{` that parses as valid JSON with `dependencies`/`devDependencies`. The handler skips messages while a wizard scene is active (checked via `ctx.session.__scenes?.current`). For named document uploads, parse errors are replied to the user; for pasted text, invalid JSON is silently ignored to avoid reacting to ordinary messages. The upload+job+notify logic lives in the exported `processPackageJsonRequest` in `commands/request.ts`, shared with the wizard.
+
+**`/help` lists only user-facing commands** — admin commands (`/subscribe`, `/unsubscribe`, `/approve_client`) are intentionally omitted from the `/help` reply to keep the interface clean for regular users.
 
 ## Known gotchas
 

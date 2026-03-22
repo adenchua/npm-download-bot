@@ -4,7 +4,7 @@ import { registerClient, getClientByTelegramId, verifyIndexes as verifyClientInd
 import { verifyIndexes as verifySubscriberIndexes } from './db/subscribers';
 import { approveClientScene, APPROVE_SCENE_ID } from './commands/approveClient';
 import { subscribeScene, unsubscribeScene, SUBSCRIBE_SCENE_ID, UNSUBSCRIBE_SCENE_ID } from './commands/subscribe';
-import { requestScene, REQUEST_SCENE_ID } from './commands/request';
+import { requestScene, REQUEST_SCENE_ID, processPackageJsonRequest } from './commands/request';
 import { BotContext } from './commands/helpers';
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -36,9 +36,6 @@ bot.help((ctx) =>
       '/start — Welcome message\n' +
       '/register — Register your account\n' +
       '/request — Submit a package.json to download npm packages\n' +
-      '/subscribe — Subscribe to notifications (admin)\n' +
-      '/unsubscribe — Unsubscribe from notifications (admin)\n' +
-      '/approve_client — Approve a registered client (admin)\n' +
       '/cancel — Cancel the current conversation\n' +
       '/help — Show this message',
   ),
@@ -73,6 +70,64 @@ bot.command('request', async (ctx) => {
     return;
   }
   return ctx.scene.enter(REQUEST_SCENE_ID);
+});
+
+bot.on('message', async (ctx) => {
+  const wizardSession = ctx.session as Scenes.WizardSession;
+  if (wizardSession.__scenes?.current) return;
+
+  const msg = ctx.message;
+  const isPackageJsonDoc = 'document' in msg && msg.document.file_name === 'package.json';
+  const isJsonText = 'text' in msg && msg.text.trimStart().startsWith('{');
+  if (!isPackageJsonDoc && !isJsonText) return;
+
+  const client = await getClientByTelegramId(ctx.from!.id);
+  if (!client) {
+    await ctx.reply('You are not registered. Use /register first.');
+    return;
+  }
+  if (!client.isApproved) {
+    await ctx.reply('Your account has not been approved yet. Please wait for an admin to approve you.');
+    return;
+  }
+
+  let pkg: Record<string, unknown> | null = null;
+
+  if (isPackageJsonDoc) {
+    const fileLink = await ctx.telegram.getFileLink(msg.document.file_id);
+    const res = await fetch(fileLink.href);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await res.text());
+    } catch {
+      await ctx.reply('Invalid JSON. Please send a valid package.json.');
+      return;
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      await ctx.reply('Invalid package.json format.');
+      return;
+    }
+    const p = parsed as Record<string, unknown>;
+    if (!p.dependencies && !p.devDependencies) {
+      await ctx.reply('The package.json must contain at least one of: dependencies, devDependencies.');
+      return;
+    }
+    pkg = p;
+  } else if (isJsonText) {
+    try {
+      const parsed = JSON.parse(msg.text);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        const p = parsed as Record<string, unknown>;
+        if (p.dependencies || p.devDependencies) pkg = p;
+      }
+    } catch {
+      // Not JSON — ignore silently
+    }
+  }
+
+  if (!pkg) return;
+
+  await processPackageJsonRequest(ctx, pkg);
 });
 
 async function main() {
