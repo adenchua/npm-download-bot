@@ -8,6 +8,7 @@
     "dev": "tsx watch --env-file=.env src/index.ts"
   },
   "dependencies": {
+    "date-fns": "^4.1.0",
     "mongodb": "^7.1.0",
     "telegraf": "^4.16.3"
   },

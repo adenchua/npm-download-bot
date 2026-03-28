@@ -46,10 +46,10 @@ Volume mounts:
 |------|------|
 | `telegram-bot/src/index.ts` | Bot entry point; registers middleware (session → cancel → stage), all command handlers, `bot.on('message')` passive package.json handler, startup validation of env vars and DB indexes |
 | `telegram-bot/src/db/index.ts` | MongoDB connection management (`connectDb`, `getDb`, `closeDb`) |
-| `telegram-bot/src/db/clients.ts` | `clients` collection: `registerClient`, `approveClient`, `getClientByTelegramId`, `verifyIndexes` |
+| `telegram-bot/src/db/clients.ts` | `clients` collection: `registerClient`, `approveClient`, `getClientByTelegramId`, `getPendingClients`, `verifyIndexes` |
 | `telegram-bot/src/db/subscribers.ts` | `subscribers` collection: `addSubscriber`, `removeSubscriber`, `getAllSubscribers`, `verifyIndexes` |
 | `telegram-bot/src/commands/helpers.ts` | Shared `BotContext` type, `getText`, `requireText`, `checkSecret` — imported by all command files |
-| `telegram-bot/src/commands/approveClient.ts` | 3-step wizard: prompt secret → validate → prompt ID/username → approve |
+| `telegram-bot/src/commands/approveClient.ts` | 4-step wizard: prompt secret → validate → show inline keyboard of pending clients → confirm with Yes/No buttons → approve |
 | `telegram-bot/src/commands/subscribe.ts` | Two 2-step wizards: `subscribeScene` and `unsubscribeScene` |
 | `telegram-bot/src/commands/request.ts` | 2-step wizard: prompt for `package.json` → validate → `POST /upload` → `POST /jobs` → reply job ID → notify all subscribers. Exports `processPackageJsonRequest(ctx, pkg)` — shared by the wizard and the passive message handler in `index.ts` |
 
@@ -73,7 +73,7 @@ Volume mounts:
 
 **`--no-audit` on `npm install`, explicit `npm audit --json` after** — `--no-audit` only suppresses the inline install-time report; it does not affect `package-lock.json`. Running `npm audit --json` separately after install reads the lock file and always produces accurate results.
 
-**`date-fns` for local-time timestamps** — all timestamps (`startedAt`, `completedAt`, `uploadedAt`, health check) use `formatISO()` from `date-fns`, which produces local time with UTC offset (e.g. `2026-03-21T10:00:00+08:00`) instead of UTC `Z` strings. The ID prefix uses `format(new Date(), 'yyyyMMdd-HHmm')` for a compact local-time stamp.
+**`date-fns` for local-time timestamps** — all timestamps (`startedAt`, `completedAt`, `uploadedAt`, health check) use `formatISO()` from `date-fns`, which produces local time with UTC offset (e.g. `2026-03-21T10:00:00+08:00`) instead of UTC `Z` strings. The ID prefix uses `format(new Date(), 'yyyyMMdd-HHmm')` for a compact local-time stamp. `telegram-bot` also uses `date-fns` (`format()`) when displaying `registeredAt` timestamps to the admin in the approve-client flow.
 
 **`TZ=Asia/Singapore` in containers** — `npm-download-service` and `telegram-bot` both set `TZ: Asia/Singapore` via `environment:` in `docker-compose.yml`. Without this, Node.js inside the container uses UTC, making all `date-fns` local-time calls produce UTC timestamps and UTC-offset IDs (`+00:00`).
 

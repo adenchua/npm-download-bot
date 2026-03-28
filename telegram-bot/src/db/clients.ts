@@ -6,6 +6,8 @@ const COLLECTION = 'clients';
 export interface Client {
   telegramId: number;
   username?: string;
+  firstName: string;
+  lastName?: string;
   registeredAt: Date;
   isApproved: boolean;
 }
@@ -56,6 +58,10 @@ export async function approveClient(
 ): Promise<boolean> {
   const result = await col().updateOne(filter, { $set: { isApproved: true } });
   return result.matchedCount > 0;
+}
+
+export async function getPendingClients(limit: number): Promise<ClientDocument[]> {
+  return col().find({ isApproved: false }).sort({ registeredAt: -1 }).limit(limit).toArray();
 }
 
 export async function deleteClient(telegramId: number): Promise<boolean> {

@@ -1,93 +1,102 @@
-import { Telegraf, Scenes, session } from 'telegraf';
-import { connectDb, closeDb } from './db';
-import { registerClient, getClientByTelegramId, verifyIndexes as verifyClientIndexes } from './db/clients';
-import { verifyIndexes as verifySubscriberIndexes } from './db/subscribers';
-import { approveClientScene, APPROVE_SCENE_ID } from './commands/approveClient';
-import { subscribeScene, unsubscribeScene, SUBSCRIBE_SCENE_ID, UNSUBSCRIBE_SCENE_ID } from './commands/subscribe';
-import { requestScene, REQUEST_SCENE_ID, processPackageJsonRequest } from './commands/request';
-import { BotContext } from './commands/helpers';
+import { Telegraf, Scenes, session } from "telegraf";
+import { connectDb, closeDb } from "./db";
+import {
+  getClientByTelegramId,
+  verifyIndexes as verifyClientIndexes,
+} from "./db/clients";
+import { verifyIndexes as verifySubscriberIndexes } from "./db/subscribers";
+import { registerCommand } from "./commands/register";
+import { approveClientScene, APPROVE_SCENE_ID } from "./commands/approveClient";
+import {
+  subscribeScene,
+  unsubscribeScene,
+  SUBSCRIBE_SCENE_ID,
+  UNSUBSCRIBE_SCENE_ID,
+} from "./commands/subscribe";
+import {
+  requestScene,
+  REQUEST_SCENE_ID,
+  processPackageJsonRequest,
+} from "./commands/request";
+import { BotContext } from "./commands/helpers";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
-  throw new Error('TELEGRAM_BOT_TOKEN is not set');
+  throw new Error("TELEGRAM_BOT_TOKEN is not set");
 }
 
 const bot = new Telegraf<BotContext>(token);
 
-const stage = new Scenes.Stage<BotContext>([approveClientScene, subscribeScene, unsubscribeScene, requestScene]);
+const stage = new Scenes.Stage<BotContext>([
+  approveClientScene,
+  subscribeScene,
+  unsubscribeScene,
+  requestScene,
+]);
 bot.use(session());
 
-bot.command('cancel', async (ctx) => {
+bot.command("cancel", async (ctx) => {
   const wizardSession = ctx.session as Scenes.WizardSession;
   if (wizardSession.__scenes?.current) {
     delete wizardSession.__scenes.current;
-    await ctx.reply('Conversation cancelled.');
+    await ctx.reply("Conversation cancelled.");
   } else {
-    await ctx.reply('No active conversation to cancel.');
+    await ctx.reply("No active conversation to cancel.");
   }
 });
 
 bot.use(stage.middleware());
 
-bot.start((ctx) => ctx.reply('Welcome! Use /help to see available commands.'));
+bot.start((ctx) => ctx.reply("Welcome! Use /help to see available commands."));
 bot.help((ctx) =>
   ctx.reply(
-    'Available commands:\n' +
-      '/start — Welcome message\n' +
-      '/register — Register your account\n' +
-      '/request — Submit a package.json to download npm packages\n' +
-      '/cancel — Cancel the current conversation\n' +
-      '/help — Show this message',
+    "Available commands:\n" +
+      "/start — Welcome message\n" +
+      "/register — Register your account\n" +
+      "/request — Submit a package.json to download npm packages\n" +
+      "/cancel — Cancel the current conversation\n" +
+      "/help — Show this message",
   ),
 );
 
-bot.command('register', async (ctx) => {
-  const { id, username } = ctx.from;
-  const isNew = await registerClient({
-    telegramId: id,
-    username,
-    registeredAt: new Date(),
-    isApproved: false,
-  });
-  await ctx.reply(
-    isNew
-      ? 'You have been registered! An admin will review your request.'
-      : 'You are already registered.',
-  );
-});
-
-bot.command('approve_client', (ctx) => ctx.scene.enter(APPROVE_SCENE_ID));
-bot.command('subscribe', (ctx) => ctx.scene.enter(SUBSCRIBE_SCENE_ID));
-bot.command('unsubscribe', (ctx) => ctx.scene.enter(UNSUBSCRIBE_SCENE_ID));
-bot.command('request', async (ctx) => {
+bot.command("register", registerCommand);
+bot.command("approve_client", (ctx) => ctx.scene.enter(APPROVE_SCENE_ID));
+bot.command("subscribe", (ctx) => ctx.scene.enter(SUBSCRIBE_SCENE_ID));
+bot.command("unsubscribe", (ctx) => ctx.scene.enter(UNSUBSCRIBE_SCENE_ID));
+bot.command("request", async (ctx) => {
   const client = await getClientByTelegramId(ctx.from.id);
   if (!client) {
-    await ctx.reply('You are not registered. Use /register first.');
+    await ctx.reply("You are not registered. Use /register first.");
     return;
   }
   if (!client.isApproved) {
-    await ctx.reply('Your account has not been approved yet. Please wait for an admin to approve you.');
+    await ctx.reply(
+      "Your account has not been approved yet. Please wait for an admin to approve you.",
+    );
     return;
   }
   return ctx.scene.enter(REQUEST_SCENE_ID);
 });
 
-bot.on('message', async (ctx) => {
+bot.on("message", async (ctx) => {
   const wizardSession = ctx.session as Scenes.WizardSession;
   if (wizardSession.__scenes?.current) return;
 
   const msg = ctx.message;
-  const isPackageJsonDoc = 'document' in msg && msg.document.file_name === 'package.json';
-  const isJsonText = 'text' in msg && msg.text.trimStart().startsWith('{');
+  const isPackageJsonDoc =
+    "document" in msg && msg.document.file_name === "package.json";
+  const isJsonText = "text" in msg && msg.text.trimStart().startsWith("{");
   if (!isPackageJsonDoc && !isJsonText) return;
 
   const client = await getClientByTelegramId(ctx.from!.id);
   if (!client) {
-    await ctx.reply('You are not registered. Use /register first.');
+    await ctx.reply("You are not registered. Use /register first.");
     return;
   }
   if (!client.isApproved) {
-    await ctx.reply('Your account has not been approved yet. Please wait for an admin to approve you.');
+    await ctx.reply(
+      "Your account has not been approved yet. Please wait for an admin to approve you.",
+    );
     return;
   }
 
@@ -100,23 +109,33 @@ bot.on('message', async (ctx) => {
     try {
       parsed = JSON.parse(await res.text());
     } catch {
-      await ctx.reply('Invalid JSON. Please send a valid package.json.');
+      await ctx.reply("Invalid JSON. Please send a valid package.json.");
       return;
     }
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      await ctx.reply('Invalid package.json format.');
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      await ctx.reply("Invalid package.json format.");
       return;
     }
     const p = parsed as Record<string, unknown>;
     if (!p.dependencies && !p.devDependencies) {
-      await ctx.reply('The package.json must contain at least one of: dependencies, devDependencies.');
+      await ctx.reply(
+        "The package.json must contain at least one of: dependencies, devDependencies.",
+      );
       return;
     }
     pkg = p;
   } else if (isJsonText) {
     try {
       const parsed = JSON.parse(msg.text);
-      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      ) {
         const p = parsed as Record<string, unknown>;
         if (p.dependencies || p.devDependencies) pkg = p;
       }
@@ -132,16 +151,16 @@ bot.on('message', async (ctx) => {
 
 async function main() {
   if (!process.env.APPROVE_SECRET) {
-    throw new Error('APPROVE_SECRET is not set');
+    throw new Error("APPROVE_SECRET is not set");
   }
   if (!process.env.NPM_DOWNLOAD_SERVICE_URL) {
-    throw new Error('NPM_DOWNLOAD_SERVICE_URL is not set');
+    throw new Error("NPM_DOWNLOAD_SERVICE_URL is not set");
   }
   await connectDb();
   await verifyClientIndexes();
   await verifySubscriberIndexes();
   bot.launch();
-  console.log('Telegram bot is running');
+  console.log("Telegram bot is running");
 }
 
 async function shutdown(signal: string) {
@@ -149,7 +168,7 @@ async function shutdown(signal: string) {
   await closeDb();
 }
 
-process.once('SIGINT', () => shutdown('SIGINT'));
-process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once("SIGINT", () => shutdown("SIGINT"));
+process.once("SIGTERM", () => shutdown("SIGTERM"));
 
 main();
