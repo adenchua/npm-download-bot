@@ -1,9 +1,11 @@
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
-import { execSync } from "child_process";
 import archiver from "archiver";
 import { formatISO } from "date-fns";
+
+import { createWriteStream, mkdirSync, mkdtempSync, readdirSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join, resolve } from "path";
+import { execSync } from "child_process";
+
 import { AuditReport, PackageMetadata, ResolvedPackage } from "./types";
 
 function tarballName(name: string, version: string): string {
@@ -14,10 +16,10 @@ function tarballName(name: string, version: string): string {
 }
 
 export async function downloadAndZip(packages: ResolvedPackage[], id: string, audit: AuditReport): Promise<void> {
-  const outputDir = path.resolve("output");
-  fs.mkdirSync(outputDir, { recursive: true });
+  const outputDir = resolve("output");
+  mkdirSync(outputDir, { recursive: true });
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `npm-pack-${id}-`));
+  const tmpDir = mkdtempSync(join(tmpdir(), `npm-pack-${id}-`));
 
   let succeeded = 0;
   let failed = 0;
@@ -64,28 +66,28 @@ export async function downloadAndZip(packages: ResolvedPackage[], id: string, au
       audit,
     };
 
-    const zipPath = path.join(outputDir, `${id}.zip`);
+    const zipPath = join(outputDir, `${id}.zip`);
     await createZip(tmpDir, metadata, zipPath);
     console.log(`→ ${zipPath}`);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
 function createZip(tgzDir: string, metadata: PackageMetadata, zipPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const output = fs.createWriteStream(zipPath);
+  return new Promise((resolveZip, rejectZip) => {
+    const output = createWriteStream(zipPath);
     const archive = archiver("zip", { zlib: { level: 6 } });
 
-    output.on("close", resolve);
-    archive.on("error", reject);
+    output.on("close", resolveZip);
+    archive.on("error", rejectZip);
 
     archive.pipe(output);
 
     // Add all .tgz files
-    const tgzFiles = fs.readdirSync(tgzDir).filter((f) => f.endsWith(".tgz"));
+    const tgzFiles = readdirSync(tgzDir).filter((f) => f.endsWith(".tgz"));
     for (const file of tgzFiles) {
-      archive.file(path.join(tgzDir, file), { name: file });
+      archive.file(join(tgzDir, file), { name: file });
     }
 
     // Add metadata.json

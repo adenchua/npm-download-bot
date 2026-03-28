@@ -1,15 +1,16 @@
 import { Router, Request, Response } from "express";
-import * as fs from "fs";
-import * as path from "path";
+
+import { existsSync } from "fs";
+import { join, resolve } from "path";
+
 import { resolveAllDependencies } from "../resolver";
 import { downloadAndZip } from "../downloader";
-
-const INPUT_DIR = path.resolve("input");
 
 export const jobsRouter = Router();
 
 // POST /jobs — fire-and-forget download job
 jobsRouter.post("/", async (req: Request, res: Response) => {
+  const INPUT_DIR = resolve("input");
   const { id } = req.body as { id?: string };
 
   if (!id || typeof id !== "string") {
@@ -17,8 +18,8 @@ jobsRouter.post("/", async (req: Request, res: Response) => {
     return;
   }
 
-  const inputPath = path.join(INPUT_DIR, `${id}.json`);
-  if (!fs.existsSync(inputPath)) {
+  const inputPath = join(INPUT_DIR, `${id}.json`);
+  if (!existsSync(inputPath)) {
     res.status(404).json({ error: `No uploaded file found for id: ${id}` });
     return;
   }

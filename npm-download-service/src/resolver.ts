@@ -1,11 +1,12 @@
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { execSync } from "child_process";
+
 import { AuditReport, AuditSeverityCounts, PackageJson, ResolvedPackage, ResolverResult } from "./types";
 
 export async function resolveAllDependencies(packageJsonPath: string): Promise<ResolverResult> {
-  const raw = fs.readFileSync(packageJsonPath, "utf-8");
+  const raw = readFileSync(packageJsonPath, "utf-8");
   const parsed: PackageJson = JSON.parse(raw);
 
   const merged: Record<string, string> = {
@@ -13,11 +14,11 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
     ...parsed.devDependencies,
   };
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "npm-resolver-"));
+  const tmpDir = mkdtempSync(join(tmpdir(), "npm-resolver-"));
 
   try {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
+    writeFileSync(
+      join(tmpDir, "package.json"),
       JSON.stringify({ name: "resolver-tmp", version: "1.0.0", dependencies: merged }, null, 2),
     );
 
@@ -31,16 +32,16 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
     const results: ResolvedPackage[] = [];
 
     function walkNodeModules(nodeModulesDir: string): void {
-      if (!fs.existsSync(nodeModulesDir)) return;
+      if (!existsSync(nodeModulesDir)) return;
 
-      for (const entry of fs.readdirSync(nodeModulesDir)) {
-        const entryPath = path.join(nodeModulesDir, entry);
+      for (const entry of readdirSync(nodeModulesDir)) {
+        const entryPath = join(nodeModulesDir, entry);
 
         if (entry.startsWith("@")) {
           // Scoped package — walk one level deeper
-          if (fs.statSync(entryPath).isDirectory()) {
-            for (const scoped of fs.readdirSync(entryPath)) {
-              collectPackage(path.join(entryPath, scoped));
+          if (statSync(entryPath).isDirectory()) {
+            for (const scoped of readdirSync(entryPath)) {
+              collectPackage(join(entryPath, scoped));
             }
           }
         } else if (!entry.startsWith(".")) {
@@ -50,12 +51,12 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
     }
 
     function collectPackage(pkgDir: string): void {
-      if (!fs.statSync(pkgDir).isDirectory()) return;
+      if (!statSync(pkgDir).isDirectory()) return;
 
-      const pkgJsonPath = path.join(pkgDir, "package.json");
-      if (fs.existsSync(pkgJsonPath)) {
+      const pkgJsonPath = join(pkgDir, "package.json");
+      if (existsSync(pkgJsonPath)) {
         try {
-          const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+          const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
           const key = `${pkg.name}@${pkg.version}`;
           if (pkg.name && pkg.version && !seen.has(key)) {
             seen.add(key);
@@ -67,19 +68,19 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
       }
 
       // Recurse into nested node_modules (edge cases)
-      const nested = path.join(pkgDir, "node_modules");
-      if (fs.existsSync(nested)) {
+      const nested = join(pkgDir, "node_modules");
+      if (existsSync(nested)) {
         walkNodeModules(nested);
       }
     }
 
-    walkNodeModules(path.join(tmpDir, "node_modules"));
+    walkNodeModules(join(tmpDir, "node_modules"));
 
     console.log("Running vulnerability audit...");
     const audit = runAudit(tmpDir, results);
     return { packages: results, audit };
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 

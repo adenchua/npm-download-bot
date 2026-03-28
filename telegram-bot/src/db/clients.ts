@@ -1,4 +1,5 @@
 import { WithId } from "mongodb";
+
 import { getDb } from ".";
 
 const COLLECTION = "clients";
