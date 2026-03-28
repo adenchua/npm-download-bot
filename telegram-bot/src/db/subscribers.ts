@@ -1,7 +1,7 @@
-import { WithId } from 'mongodb';
-import { getDb } from '.';
+import { WithId } from "mongodb";
+import { getDb } from ".";
 
-const COLLECTION = 'subscribers';
+const COLLECTION = "subscribers";
 
 export interface Subscriber {
   telegramId: number;
@@ -17,7 +17,7 @@ function col() {
 
 export async function verifyIndexes(): Promise<void> {
   const indexes = await col().indexes();
-  if (!indexes.some((idx) => idx.name === 'subscriber')) {
+  if (!indexes.some((idx) => idx.name === "subscriber")) {
     throw new Error(
       'Required unique index "subscriber" is missing on the subscribers collection. Ensure the database was initialised correctly.',
     );
@@ -26,11 +26,7 @@ export async function verifyIndexes(): Promise<void> {
 
 // Returns true if newly subscribed, false if already existed.
 export async function addSubscriber(data: Subscriber): Promise<boolean> {
-  const result = await col().updateOne(
-    { telegramId: data.telegramId },
-    { $setOnInsert: data },
-    { upsert: true },
-  );
+  const result = await col().updateOne({ telegramId: data.telegramId }, { $setOnInsert: data }, { upsert: true });
   return result.upsertedCount === 1;
 }
 

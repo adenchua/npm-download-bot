@@ -1,19 +1,19 @@
-import { Router, Request, Response } from 'express';
-import * as fs from 'fs';
-import * as path from 'path';
-import { resolveAllDependencies } from '../resolver';
-import { downloadAndZip } from '../downloader';
+import { Router, Request, Response } from "express";
+import * as fs from "fs";
+import * as path from "path";
+import { resolveAllDependencies } from "../resolver";
+import { downloadAndZip } from "../downloader";
 
-const INPUT_DIR = path.resolve('input');
+const INPUT_DIR = path.resolve("input");
 
 export const jobsRouter = Router();
 
 // POST /jobs — fire-and-forget download job
-jobsRouter.post('/', async (req: Request, res: Response) => {
+jobsRouter.post("/", async (req: Request, res: Response) => {
   const { id } = req.body as { id?: string };
 
-  if (!id || typeof id !== 'string') {
-    res.status(400).json({ error: 'Request body must contain { id: string }' });
+  if (!id || typeof id !== "string") {
+    res.status(400).json({ error: "Request body must contain { id: string }" });
     return;
   }
 
@@ -23,7 +23,7 @@ jobsRouter.post('/', async (req: Request, res: Response) => {
     return;
   }
 
-  res.status(202).json({ message: 'Job started', id });
+  res.status(202).json({ message: "Job started", id });
 
   runJob(id, inputPath).catch((err) => {
     console.error(`[job:${id}] failed:`, err instanceof Error ? err.message : err);

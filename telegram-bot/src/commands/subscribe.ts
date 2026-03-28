@@ -25,11 +25,7 @@ export const subscribeScene = new Scenes.WizardScene<BotContext>(
       username,
       subscribedAt: new Date(),
     });
-    await ctx.reply(
-      isNew
-        ? "You are now subscribed to notifications."
-        : "You are already subscribed.",
-    );
+    await ctx.reply(isNew ? "You are now subscribed to notifications." : "You are already subscribed.");
     return ctx.scene.leave();
   },
 );
@@ -49,11 +45,7 @@ export const unsubscribeScene = new Scenes.WizardScene<BotContext>(
     if (text === null) return;
     if (!(await checkSecret(ctx, text))) return;
     const removed = await removeSubscriber(ctx.from!.id);
-    await ctx.reply(
-      removed
-        ? "You have been unsubscribed."
-        : "You are not currently subscribed.",
-    );
+    await ctx.reply(removed ? "You have been unsubscribed." : "You are not currently subscribed.");
     return ctx.scene.leave();
   },
 );

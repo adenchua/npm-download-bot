@@ -63,6 +63,8 @@ Volume mounts:
 
 ## Architectural decisions
 
+**Prettier for code formatting** — both `npm-download-service` and `telegram-bot` use Prettier (exact version, pinned in `devDependencies`) with a shared config: `trailingComma: "all"`, `printWidth: 120`, `useTabs: false`, `tabWidth: 2`. Run `npm run format` in either package to reformat all `src/**/*.{ts,js}` files. Config lives in `.prettierrc` at each package root.
+
 **tsx instead of ts-node** — no build step needed; `npm start` executes TypeScript directly via esbuild. `npm run build` (tsc → `dist/`) exists for producing a compiled binary but is not required for development.
 
 **HTTP API instead of interactive CLI** — the service exposes a REST API. Upload a `package.json` via `POST /upload`, then trigger a job via `POST /jobs`. The old interactive prompt (`@inquirer/prompts`) has been replaced.

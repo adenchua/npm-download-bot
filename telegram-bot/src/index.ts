@@ -1,23 +1,11 @@
 import { Telegraf, Scenes, session } from "telegraf";
 import { connectDb, closeDb } from "./db";
-import {
-  getClientByTelegramId,
-  verifyIndexes as verifyClientIndexes,
-} from "./db/clients";
+import { getClientByTelegramId, verifyIndexes as verifyClientIndexes } from "./db/clients";
 import { verifyIndexes as verifySubscriberIndexes } from "./db/subscribers";
 import { registerCommand } from "./commands/register";
 import { approveClientScene, APPROVE_SCENE_ID } from "./commands/approveClient";
-import {
-  subscribeScene,
-  unsubscribeScene,
-  SUBSCRIBE_SCENE_ID,
-  UNSUBSCRIBE_SCENE_ID,
-} from "./commands/subscribe";
-import {
-  requestScene,
-  REQUEST_SCENE_ID,
-  processPackageJsonRequest,
-} from "./commands/request";
+import { subscribeScene, unsubscribeScene, SUBSCRIBE_SCENE_ID, UNSUBSCRIBE_SCENE_ID } from "./commands/subscribe";
+import { requestScene, REQUEST_SCENE_ID, processPackageJsonRequest } from "./commands/request";
 import { BotContext } from "./commands/helpers";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -27,12 +15,7 @@ if (!token) {
 
 const bot = new Telegraf<BotContext>(token);
 
-const stage = new Scenes.Stage<BotContext>([
-  approveClientScene,
-  subscribeScene,
-  unsubscribeScene,
-  requestScene,
-]);
+const stage = new Scenes.Stage<BotContext>([approveClientScene, subscribeScene, unsubscribeScene, requestScene]);
 bot.use(session());
 
 bot.command("cancel", async (ctx) => {
@@ -70,9 +53,7 @@ bot.command("request", async (ctx) => {
     return;
   }
   if (!client.isApproved) {
-    await ctx.reply(
-      "Your account has not been approved yet. Please wait for an admin to approve you.",
-    );
+    await ctx.reply("Your account has not been approved yet. Please wait for an admin to approve you.");
     return;
   }
   return ctx.scene.enter(REQUEST_SCENE_ID);
@@ -83,8 +64,7 @@ bot.on("message", async (ctx) => {
   if (wizardSession.__scenes?.current) return;
 
   const msg = ctx.message;
-  const isPackageJsonDoc =
-    "document" in msg && msg.document.file_name === "package.json";
+  const isPackageJsonDoc = "document" in msg && msg.document.file_name === "package.json";
   const isJsonText = "text" in msg && msg.text.trimStart().startsWith("{");
   if (!isPackageJsonDoc && !isJsonText) return;
 
@@ -94,9 +74,7 @@ bot.on("message", async (ctx) => {
     return;
   }
   if (!client.isApproved) {
-    await ctx.reply(
-      "Your account has not been approved yet. Please wait for an admin to approve you.",
-    );
+    await ctx.reply("Your account has not been approved yet. Please wait for an admin to approve you.");
     return;
   }
 
@@ -112,30 +90,20 @@ bot.on("message", async (ctx) => {
       await ctx.reply("Invalid JSON. Please send a valid package.json.");
       return;
     }
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      Array.isArray(parsed)
-    ) {
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       await ctx.reply("Invalid package.json format.");
       return;
     }
     const p = parsed as Record<string, unknown>;
     if (!p.dependencies && !p.devDependencies) {
-      await ctx.reply(
-        "The package.json must contain at least one of: dependencies, devDependencies.",
-      );
+      await ctx.reply("The package.json must contain at least one of: dependencies, devDependencies.");
       return;
     }
     pkg = p;
   } else if (isJsonText) {
     try {
       const parsed = JSON.parse(msg.text);
-      if (
-        typeof parsed === "object" &&
-        parsed !== null &&
-        !Array.isArray(parsed)
-      ) {
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
         const p = parsed as Record<string, unknown>;
         if (p.dependencies || p.devDependencies) pkg = p;
       }

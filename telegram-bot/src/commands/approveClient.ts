@@ -1,31 +1,27 @@
-import { Scenes, Markup } from 'telegraf';
-import { format } from 'date-fns';
-import { approveClient, getClientByTelegramId, getPendingClients, ClientDocument } from '../db/clients';
-import { BotContext, requireText, checkSecret } from './helpers';
+import { Scenes, Markup } from "telegraf";
+import { format } from "date-fns";
+import { approveClient, getClientByTelegramId, getPendingClients, ClientDocument } from "../db/clients";
+import { BotContext, requireText, checkSecret } from "./helpers";
 
-export const APPROVE_SCENE_ID = 'approve_client';
+export const APPROVE_SCENE_ID = "approve_client";
 
 interface ApproveState {
   selectedTelegramId?: number;
 }
 
 function clientButtonLabel(client: ClientDocument): string {
-  const name = [client.firstName, client.lastName].filter(Boolean).join(' ');
-  const handle = client.username ? ` (@${client.username})` : '';
-  const date = format(client.registeredAt, 'dd MMM yyyy');
+  const name = [client.firstName, client.lastName].filter(Boolean).join(" ");
+  const handle = client.username ? ` (@${client.username})` : "";
+  const date = format(client.registeredAt, "dd MMM yyyy");
   return `${name}${handle} — ${date}`;
 }
 
 function clientConfirmText(client: ClientDocument): string {
-  const name = [client.firstName, client.lastName].filter(Boolean).join(' ');
-  const lines = [
-    'Approve this client?\n',
-    `ID: ${client.telegramId}`,
-    `Name: ${name}`,
-  ];
+  const name = [client.firstName, client.lastName].filter(Boolean).join(" ");
+  const lines = ["Approve this client?\n", `ID: ${client.telegramId}`, `Name: ${name}`];
   if (client.username) lines.push(`Username: @${client.username}`);
-  lines.push(`Registered: ${format(client.registeredAt, 'dd MMM yyyy HH:mm')}`);
-  return lines.join('\n');
+  lines.push(`Registered: ${format(client.registeredAt, "dd MMM yyyy HH:mm")}`);
+  return lines.join("\n");
 }
 
 export const approveClientScene = new Scenes.WizardScene<BotContext>(
@@ -33,7 +29,7 @@ export const approveClientScene = new Scenes.WizardScene<BotContext>(
 
   // Step 1 — prompt for secret
   async (ctx) => {
-    await ctx.reply('Enter the admin secret:');
+    await ctx.reply("Enter the admin secret:");
     return ctx.wizard.next();
   },
 
@@ -41,34 +37,34 @@ export const approveClientScene = new Scenes.WizardScene<BotContext>(
   async (ctx) => {
     const text = await requireText(ctx);
     if (text === null) return;
-    if (!await checkSecret(ctx, text)) return;
+    if (!(await checkSecret(ctx, text))) return;
 
     const pending = await getPendingClients(5);
     if (pending.length === 0) {
-      await ctx.reply('No pending registrations.');
+      await ctx.reply("No pending registrations.");
       return ctx.scene.leave();
     }
 
     const buttons = pending.map((client) => [
       Markup.button.callback(clientButtonLabel(client), `select:${client.telegramId}`),
     ]);
-    await ctx.reply('Select a client to approve:', Markup.inlineKeyboard(buttons));
+    await ctx.reply("Select a client to approve:", Markup.inlineKeyboard(buttons));
     return ctx.wizard.next();
   },
 
   // Step 3 — handle client selection
   async (ctx) => {
     const cbq = ctx.callbackQuery;
-    if (!cbq || !('data' in cbq) || !cbq.data.startsWith('select:')) {
-      await ctx.reply('Please select a client from the list above.');
+    if (!cbq || !("data" in cbq) || !cbq.data.startsWith("select:")) {
+      await ctx.reply("Please select a client from the list above.");
       return;
     }
     await ctx.answerCbQuery();
 
-    const telegramId = parseInt(cbq.data.slice('select:'.length), 10);
+    const telegramId = parseInt(cbq.data.slice("select:".length), 10);
     const client = await getClientByTelegramId(telegramId);
     if (!client) {
-      await ctx.reply('Client not found.');
+      await ctx.reply("Client not found.");
       return ctx.scene.leave();
     }
 
@@ -77,7 +73,7 @@ export const approveClientScene = new Scenes.WizardScene<BotContext>(
     await ctx.reply(
       clientConfirmText(client),
       Markup.inlineKeyboard([
-        [Markup.button.callback('Yes', 'confirm:yes'), Markup.button.callback('No', 'confirm:no')],
+        [Markup.button.callback("Yes", "confirm:yes"), Markup.button.callback("No", "confirm:no")],
       ]),
     );
     return ctx.wizard.next();
@@ -86,22 +82,22 @@ export const approveClientScene = new Scenes.WizardScene<BotContext>(
   // Step 4 — handle Yes / No confirmation
   async (ctx) => {
     const cbq = ctx.callbackQuery;
-    if (!cbq || !('data' in cbq)) {
-      await ctx.reply('Please use the Yes / No buttons above.');
+    if (!cbq || !("data" in cbq)) {
+      await ctx.reply("Please use the Yes / No buttons above.");
       return;
     }
     await ctx.answerCbQuery();
 
-    if (cbq.data === 'confirm:yes') {
+    if (cbq.data === "confirm:yes") {
       const { selectedTelegramId } = ctx.wizard.state as ApproveState;
       if (!selectedTelegramId) {
-        await ctx.reply('Something went wrong. Please try again.');
+        await ctx.reply("Something went wrong. Please try again.");
         return ctx.scene.leave();
       }
       const approved = await approveClient({ telegramId: selectedTelegramId });
-      await ctx.reply(approved ? 'Client approved.' : 'Client not found.');
+      await ctx.reply(approved ? "Client approved." : "Client not found.");
     } else {
-      await ctx.reply('Approval cancelled.');
+      await ctx.reply("Approval cancelled.");
     }
 
     return ctx.scene.leave();

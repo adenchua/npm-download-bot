@@ -1,5 +1,5 @@
-import { registerClient } from '../db/clients';
-import { BotContext } from './helpers';
+import { registerClient } from "../db/clients";
+import { BotContext } from "./helpers";
 
 export async function registerCommand(ctx: BotContext): Promise<void> {
   const { id, username, first_name, last_name } = ctx.from!;
@@ -12,8 +12,6 @@ export async function registerCommand(ctx: BotContext): Promise<void> {
     isApproved: false,
   });
   await ctx.reply(
-    isNew
-      ? 'You have been registered! An admin will review your request.'
-      : 'You are already registered.',
+    isNew ? "You have been registered! An admin will review your request." : "You are already registered.",
   );
 }

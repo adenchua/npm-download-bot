@@ -4,6 +4,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "format": "prettier --write \"src/**/*.{ts,js}\"",
     "start": "tsx --env-file=.env src/index.ts",
     "dev": "tsx watch --env-file=.env src/index.ts"
   },
@@ -14,6 +15,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
+    "prettier": "3.8.1",
     "tsx": "^4.19.3",
     "typescript": "^5.9.3"
   }
