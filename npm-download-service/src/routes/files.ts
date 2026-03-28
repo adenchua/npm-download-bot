@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import { v4 as uuidv4 } from 'uuid';
 import { format, formatISO, isToday } from 'date-fns';
 import { PackageJson } from '../types';
 
@@ -25,7 +24,9 @@ filesRouter.post('/upload', async (req: Request, res: Response) => {
     return;
   }
 
-  const id = `${format(new Date(), 'yyyyMMdd-HHmm')}-${uuidv4()}`;
+  const datePrefix = format(new Date(), 'yyyyMMdd');
+  const todayCount = fs.readdirSync(INPUT_DIR).filter((f) => f.startsWith(datePrefix) && f.endsWith('.json')).length;
+  const id = `${datePrefix}-${format(new Date(), 'HHmm')}-${todayCount + 1}`;
   fs.writeFileSync(path.join(INPUT_DIR, `${id}.json`), JSON.stringify(body, null, 2));
 
   res.status(201).json({ id });
