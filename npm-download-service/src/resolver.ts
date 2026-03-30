@@ -1,9 +1,12 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { execSync } from "child_process";
+import { exec } from "child_process";
+import { promisify } from "util";
 
 import { AuditReport, AuditSeverityCounts, PackageJson, ResolvedPackage, ResolverResult } from "./types";
+
+const execAsync = promisify(exec);
 
 export async function resolveAllDependencies(packageJsonPath: string): Promise<ResolverResult> {
   const raw = readFileSync(packageJsonPath, "utf-8");
@@ -23,10 +26,7 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
     );
 
     console.log("Installing dependencies to resolve full tree...");
-    execSync("npm install --ignore-scripts --no-audit --no-fund", {
-      cwd: tmpDir,
-      stdio: "inherit",
-    });
+    await execAsync("npm install --ignore-scripts --no-audit --no-fund", { cwd: tmpDir });
 
     const seen = new Set<string>();
     const results: ResolvedPackage[] = [];
@@ -77,7 +77,7 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
     walkNodeModules(join(tmpDir, "node_modules"));
 
     console.log("Running vulnerability audit...");
-    const audit = runAudit(tmpDir, results);
+    const audit = await runAudit(tmpDir, results);
     return { packages: results, audit };
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
@@ -89,22 +89,22 @@ interface NpmAuditJson {
   metadata?: { vulnerabilities: AuditSeverityCounts };
 }
 
-function runAudit(cwd: string, resolvedPackages: ResolvedPackage[]): AuditReport {
+async function runAudit(cwd: string, resolvedPackages: ResolvedPackage[]): Promise<AuditReport> {
   let rawJson: string;
   try {
-    rawJson = execSync("npm audit --json", {
+    const { stdout } = await execAsync("npm audit --json", {
       cwd,
-      stdio: "pipe",
       maxBuffer: 10 * 1024 * 1024,
-    }).toString();
+    });
+    rawJson = stdout;
   } catch (err: unknown) {
     // npm audit exits code 1 when vulnerabilities are found — stdout is still valid JSON
-    const e = err as { stdout?: Buffer };
+    const e = err as { stdout?: string };
     if (!e.stdout) {
       console.warn("  npm audit failed to execute — skipping");
       return emptyAuditReport();
     }
-    rawJson = e.stdout.toString();
+    rawJson = e.stdout;
   }
 
   try {
