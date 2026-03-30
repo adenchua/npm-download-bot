@@ -15,6 +15,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    restart: unless-stopped
 
   mongodb:
     image: mongo:8
@@ -29,6 +30,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    restart: unless-stopped
 
   telegram-bot:
     build: ./telegram-bot
@@ -51,3 +53,4 @@ services:
         condition: service_healthy
     ports:
       - "0.0.0.0:8081:8081"
+    restart: unless-stopped
