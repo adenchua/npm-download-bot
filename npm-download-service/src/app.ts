@@ -3,6 +3,7 @@ import { formatISO } from "date-fns";
 
 import { filesRouter } from "./routes/files";
 import { jobsRouter } from "./routes/jobs";
+import { resolveRouter } from "./routes/resolve";
 import { errorHandler } from "./middleware/errorHandler";
 
 export function createApp(): express.Application {
@@ -15,6 +16,7 @@ export function createApp(): express.Application {
   });
 
   app.use("/", filesRouter);
+  app.use("/", resolveRouter);
   app.use("/jobs", jobsRouter);
 
   app.use((_req, res) => {

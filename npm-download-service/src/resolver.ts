@@ -157,7 +157,7 @@ async function runAudit(cwd: string, resolvedPackages: ResolvedPackage[]): Promi
   }
 }
 
-async function resolveVersionRange(packageName: string, versionRange: string): Promise<string | null> {
+export async function resolveVersionRange(packageName: string, versionRange: string): Promise<string | null> {
   try {
     const { stdout } = await execAsync(`npm view ${packageName} versions --json`, { maxBuffer: 10 * 1024 * 1024 });
     const versions: string[] = JSON.parse(stdout);
