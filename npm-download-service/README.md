@@ -1,6 +1,6 @@
 # npm-download-service
 
-An HTTP service that resolves all transitive npm dependencies from a `package.json` and packages them as a self-contained `.zip` archive for offline installation. Useful for air-gapped environments, dependency snapshots, and supply chain audits.
+An HTTP service that resolves all transitive npm dependencies from a `package.json` and packages them as a self-contained `.tgz` archive for offline installation. Useful for air-gapped environments, dependency snapshots, and supply chain audits.
 
 ## API endpoints
 
@@ -32,7 +32,7 @@ curl -X POST http://localhost:3000/jobs \
 # → 202 Accepted; job runs in the background
 ```
 
-**3. Collect output** — the `.zip` archive appears in `output/<id>.zip` when the job completes.
+**3. Collect output** — the `.tgz` archive appears in `output/<id>.tgz` when the job completes.
 
 ## Input format
 
@@ -70,10 +70,10 @@ The request body is capped at 100 KB by the HTTP server.
 
 ## Output format
 
-Each `output/<id>.zip` contains:
+Each `output/<id>.tgz` contains:
 
 ```
-<id>.zip
+<id>.tgz
 ├── metadata.json
 ├── express-4.18.2.tgz
 ├── lodash-4.17.21.tgz
@@ -121,5 +121,5 @@ Requires a `.env` file — copy `.env.template` and set `SERVER_PORT` if needed.
 3. **Resolve** — merges `dependencies`, `devDependencies`, and `peerDependencies` (resolving complex peer dep version ranges to concrete versions via `semver`), writes a merged `package.json` to a temp directory, and runs `npm install --ignore-scripts` to materialise the full dependency tree
 4. **Audit** — runs `npm audit --json` against the installed lock file and extracts vulnerability counts and HIGH/CRITICAL package names
 5. **Download** — runs `npm pack <name>@<version>` for every resolved package and collects the `.tgz` files
-6. **Package** — zips all tarballs together with `metadata.json` into `output/<id>.zip`
+6. **Package** — bundles all tarballs together with `metadata.json` into `output/<id>.tgz`
 7. **Cleanup** — removes the temp directory

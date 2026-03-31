@@ -4,7 +4,7 @@
 
 | Directory | Role |
 |-----------|------|
-| `npm-download-service/` | HTTP service that resolves and bundles npm dependencies as offline `.zip` archives |
+| `npm-download-service/` | HTTP service that resolves and bundles npm dependencies as offline `.tgz` archives |
 | `telegram-bot/` | Telegram bot for submitting download requests and managing user access |
 | `database/` | MongoDB schema definitions and init scripts |
 
@@ -48,7 +48,7 @@ Volume mounts:
 | `npm-download-service/src/routes/jobs.ts` | `POST /jobs` — fire-and-forget download job |
 | `npm-download-service/src/middleware/errorHandler.ts` | Global Express error handler |
 | `npm-download-service/src/resolver.ts` | Creates a temp dir, merges `dependencies`/`devDependencies`/`peerDependencies`, runs `npm install` to materialise the full dependency tree, walks `node_modules`, then runs `npm audit`. Complex peer dep version ranges (`\|\|`, comparisons) are resolved to a concrete latest version via `semver.maxSatisfying()` before install. |
-| `npm-download-service/src/downloader.ts` | Iterates resolved packages, runs `npm pack <name>@<version>` for each, zips all tarballs + `metadata.json` via `archiver` |
+| `npm-download-service/src/downloader.ts` | Iterates resolved packages, runs `npm pack <name>@<version>` for each, bundles all tarballs + `metadata.json` into a `.tgz` via `archiver` |
 | `npm-download-service/src/types.ts` | All shared TypeScript interfaces (`PackageJson`, `ResolvedPackage`, `AuditReport`, `PackageMetadata`, etc.) |
 
 ## telegram-bot source map
@@ -82,7 +82,7 @@ Volume mounts:
 
 **HTTP API instead of interactive CLI** — the service exposes a REST API. Upload a `package.json` via `POST /upload`, then trigger a job via `POST /jobs`. The old interactive prompt (`@inquirer/prompts`) has been replaced.
 
-**File stem as archive ID** — uploaded files are saved as `input/<id>.json` where the ID is `yyyyMMdd-HHmm-X` (X = 1-indexed count of `.json` files in `input/` at upload time). This produces `output/<id>.zip`. No separate manifest file.
+**File stem as archive ID** — uploaded files are saved as `input/<id>.json` where the ID is `yyyyMMdd-HHmm-X` (X = 1-indexed count of `.json` files in `input/` at upload time). This produces `output/<id>.tgz`. No separate manifest file.
 
 **`maxBuffer: 1024 * 1024 * 1024` on `npm pack`** — large packages (e.g. `@mui/icons-material`) emit multi-megabyte stderr (peer dependency warnings). The default 1 MB buffer causes silent failures. Set to 1 GB; only text is buffered, not binary tarballs.
 
@@ -135,7 +135,7 @@ A clean run produces no output. Fix any errors before considering the task done.
 
 ## Output structure (npm-download-service)
 
-Each `output/<id>.zip` contains:
+Each `output/<id>.tgz` contains:
 
 ```
 metadata.json

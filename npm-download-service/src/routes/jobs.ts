@@ -36,5 +36,5 @@ async function runJob(id: string, inputPath: string): Promise<void> {
   const { packages, audit } = await resolveAllDependencies(inputPath);
   console.log(`[job:${id}] resolved ${packages.length} packages, starting pack…`);
   await downloadAndZip(packages, id, audit);
-  console.log(`[job:${id}] complete → output/${id}.zip`);
+  console.log(`[job:${id}] complete → output/${id}.tgz`);
 }

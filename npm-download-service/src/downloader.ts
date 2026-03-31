@@ -68,18 +68,18 @@ export async function downloadAndZip(packages: ResolvedPackage[], id: string, au
       audit,
     };
 
-    const zipPath = join(outputDir, `${id}.zip`);
-    await createZip(tmpDir, metadata, zipPath);
-    console.log(`→ ${zipPath}`);
+    const tgzPath = join(outputDir, `${id}.tgz`);
+    await createTgz(tmpDir, metadata, tgzPath);
+    console.log(`→ ${tgzPath}`);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
-function createZip(tgzDir: string, metadata: PackageMetadata, zipPath: string): Promise<void> {
+function createTgz(tgzDir: string, metadata: PackageMetadata, tgzPath: string): Promise<void> {
   return new Promise((resolveZip, rejectZip) => {
-    const output = createWriteStream(zipPath);
-    const archive = archiver("zip", { zlib: { level: 6 } });
+    const output = createWriteStream(tgzPath);
+    const archive = archiver("tar", { gzip: true, gzipOptions: { level: 6 } });
 
     output.on("close", resolveZip);
     archive.on("error", rejectZip);
