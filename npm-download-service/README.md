@@ -10,7 +10,9 @@ An HTTP service that resolves all transitive npm dependencies from a `package.js
 | `POST` | `/upload` | Upload a `package.json` body; returns `{ id }` |
 | `GET` | `/files` | List all uploaded files with metadata |
 | `GET` | `/files?showToday=true` | List only files uploaded today (local time) |
+| `POST` | `/resolve` | Resolve all version ranges to exact semver; returns the resolved `package.json` |
 | `POST` | `/jobs` | Start a download job; body `{ id }`; returns 202 immediately |
+| `GET` | `/docs` | Interactive API documentation (Swagger UI) |
 
 ## Typical workflow
 

@@ -62,7 +62,7 @@ docker compose logs -f mongodb
 
 ## Services
 
-- **npm-download-service** — REST API at `http://localhost:3000`. See [npm-download-service/README.md](npm-download-service/README.md).
+- **npm-download-service** — REST API at `http://localhost:3000`. Interactive API docs at `http://localhost:3000/docs`. See [npm-download-service/README.md](npm-download-service/README.md).
 - **telegram-bot** — Telegram bot. See [telegram-bot/README.md](telegram-bot/README.md).
 - **database** — MongoDB configuration and schema definitions. See [database/README.md](database/README.md).
 - **mongo-express** — Database UI at `http://localhost:8081`.

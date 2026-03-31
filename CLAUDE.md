@@ -43,7 +43,8 @@ Volume mounts:
 | File | Role |
 |------|------|
 | `npm-download-service/src/index.ts` | HTTP server entry point; creates `input/` and `output/` dirs, starts Express on `SERVER_PORT` |
-| `npm-download-service/src/app.ts` | Express app factory; mounts `filesRouter` and `jobsRouter`, registers global `errorHandler` |
+| `npm-download-service/src/app.ts` | Express app factory; mounts `filesRouter`, `resolveRouter`, and `jobsRouter`; serves Swagger UI at `GET /docs` via `swagger-ui-express`; registers global `errorHandler` |
+| `npm-download-service/src/swagger.ts` | OpenAPI 3.1.0 document exported as `swaggerDocument`; defines all paths and reusable schemas in `components/schemas` |
 | `npm-download-service/src/routes/files.ts` | `POST /upload` and `GET /files` (with `?showToday` filter) |
 | `npm-download-service/src/routes/jobs.ts` | `POST /jobs` — fire-and-forget download job |
 | `npm-download-service/src/middleware/errorHandler.ts` | Global Express error handler |
