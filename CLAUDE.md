@@ -122,6 +122,17 @@ Volume mounts:
 
 - **`/cancel` uses `delete wizardSession.__scenes.current`** — assigning `{}` to `__scenes` fails TypeScript because `WizardSessionData.cursor` is a required field. Deleting only the `current` key is the correct approach; it removes the scene marker without touching other session data.
 
+## TypeScript compilation
+
+After any change to a `.ts` file in either package, verify the affected package compiles cleanly:
+
+```bash
+cd npm-download-service && npx tsc --noEmit
+cd telegram-bot && npx tsc --noEmit
+```
+
+A clean run produces no output. Fix any errors before considering the task done.
+
 ## Output structure (npm-download-service)
 
 Each `output/<id>.zip` contains:
