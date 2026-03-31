@@ -36,7 +36,7 @@ Volume mounts:
 | `npm-download-service/src/routes/files.ts` | `POST /upload` and `GET /files` (with `?showToday` filter) |
 | `npm-download-service/src/routes/jobs.ts` | `POST /jobs` — fire-and-forget download job |
 | `npm-download-service/src/middleware/errorHandler.ts` | Global Express error handler |
-| `npm-download-service/src/resolver.ts` | Creates a temp dir, runs `npm install` to materialise the full dependency tree, walks `node_modules`, then runs `npm audit` |
+| `npm-download-service/src/resolver.ts` | Creates a temp dir, merges `dependencies`/`devDependencies`/`peerDependencies`, runs `npm install` to materialise the full dependency tree, walks `node_modules`, then runs `npm audit`. Complex peer dep version ranges (`\|\|`, comparisons) are resolved to a concrete latest version via `semver.maxSatisfying()` before install. |
 | `npm-download-service/src/downloader.ts` | Iterates resolved packages, runs `npm pack <name>@<version>` for each, zips all tarballs + `metadata.json` via `archiver` |
 | `npm-download-service/src/types.ts` | All shared TypeScript interfaces (`PackageJson`, `ResolvedPackage`, `AuditReport`, `PackageMetadata`, etc.) |
 
@@ -107,7 +107,7 @@ Volume mounts:
 
 - **Tarball filename for scoped packages**: `@scope/pkg@1.0.0` → `scope-pkg-1.0.0.tgz`. Strip the leading `@`, replace the first `/` with `-`. See `tarballName()` in `npm-download-service/src/downloader.ts`.
 
-- **`devDependencies` are included** — `resolver.ts` merges `dependencies` and `devDependencies` before resolving. This is intentional; the tool targets full project snapshots.
+- **`devDependencies` and `peerDependencies` are included** — `resolver.ts` merges `dependencies`, `devDependencies`, and `peerDependencies` before resolving. This is intentional; the tool targets full project snapshots. Peer deps already present in `dependencies`/`devDependencies` are not duplicated (first-writer wins). Complex peer dep version ranges containing `||` or comparison operators are resolved to the latest satisfying concrete version via `npm view <pkg> versions --json` + `semver.maxSatisfying()` before the temp `package.json` is written; simple ranges (`^`, `~`, exact) are passed through as-is.
 
 - **`verifyIndexes` requires DB init** — if the MongoDB data volume already exists from before the init scripts were added, the required indexes will be absent and the bot will refuse to start. Run `docker compose down -v && docker compose up` to re-initialise the database.
 

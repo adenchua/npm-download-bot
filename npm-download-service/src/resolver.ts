@@ -1,3 +1,5 @@
+import semver from "semver";
+
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -16,6 +18,26 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
     ...parsed.dependencies,
     ...parsed.devDependencies,
   };
+
+  if (parsed.peerDependencies) {
+    console.log("Resolving peer dependencies...");
+    for (const [name, versionSpec] of Object.entries(parsed.peerDependencies)) {
+      if (name in merged) continue;
+
+      const needsResolution = versionSpec.includes("||") || /[><=]/.test(versionSpec);
+      if (needsResolution) {
+        const resolved = await resolveVersionRange(name, versionSpec);
+        if (resolved) {
+          merged[name] = resolved;
+          console.log(`  Resolved peer dep ${name}: "${versionSpec}" → ${resolved}`);
+        } else {
+          console.warn(`  Could not resolve peer dep ${name}@${versionSpec} — skipping`);
+        }
+      } else {
+        merged[name] = versionSpec;
+      }
+    }
+  }
 
   const tmpDir = mkdtempSync(join(tmpdir(), "npm-resolver-"));
 
@@ -132,6 +154,16 @@ async function runAudit(cwd: string, resolvedPackages: ResolvedPackage[]): Promi
   } catch {
     console.warn("  Failed to parse npm audit output — skipping");
     return emptyAuditReport();
+  }
+}
+
+async function resolveVersionRange(packageName: string, versionRange: string): Promise<string | null> {
+  try {
+    const { stdout } = await execAsync(`npm view ${packageName} versions --json`, { maxBuffer: 10 * 1024 * 1024 });
+    const versions: string[] = JSON.parse(stdout);
+    return semver.maxSatisfying(versions, versionRange);
+  } catch {
+    return null;
   }
 }
 

@@ -36,7 +36,7 @@ curl -X POST http://localhost:3000/jobs \
 
 ## Input format
 
-A standard `package.json` with `dependencies` and/or `devDependencies`:
+A standard `package.json` with any combination of `dependencies`, `devDependencies`, and/or `peerDependencies`:
 
 ```json
 {
@@ -46,11 +46,14 @@ A standard `package.json` with `dependencies` and/or `devDependencies`:
   },
   "devDependencies": {
     "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "react": "^17.0.0 || ^18.0.0"
   }
 }
 ```
 
-Both sections are merged and fully resolved before downloading.
+All three sections are merged and fully resolved before downloading. For peer dependencies, any version spec containing `||` or comparison operators (`>=`, `>`, etc.) is resolved to the latest matching concrete version. Simple peer dep ranges (`^`, `~`, exact) are passed through as-is. Peer deps already present in `dependencies`/`devDependencies` are not duplicated.
 
 ## Output format
 
@@ -102,7 +105,7 @@ Requires a `.env` file — copy `.env.template` and set `SERVER_PORT` if needed.
 
 1. **Upload** — `POST /upload` saves the `package.json` body to `input/<id>.json` and returns the ID
 2. **Trigger** — `POST /jobs` starts a background job for that ID; responds 202 immediately
-3. **Resolve** — writes a merged `package.json` to a temp directory and runs `npm install --ignore-scripts` to materialise the full dependency tree
+3. **Resolve** — merges `dependencies`, `devDependencies`, and `peerDependencies` (resolving complex peer dep version ranges to concrete versions via `semver`), writes a merged `package.json` to a temp directory, and runs `npm install --ignore-scripts` to materialise the full dependency tree
 4. **Audit** — runs `npm audit --json` against the installed lock file and extracts vulnerability counts and HIGH/CRITICAL package names
 5. **Download** — runs `npm pack <name>@<version>` for every resolved package and collects the `.tgz` files
 6. **Package** — zips all tarballs together with `metadata.json` into `output/<id>.zip`
