@@ -7,7 +7,7 @@ import { registerCommand } from "./commands/register";
 import { approveClientScene, APPROVE_SCENE_ID } from "./commands/approveClient";
 import { subscribeScene, unsubscribeScene, SUBSCRIBE_SCENE_ID, UNSUBSCRIBE_SCENE_ID } from "./commands/subscribe";
 import { requestScene, REQUEST_SCENE_ID, processPackageJsonRequest } from "./commands/request";
-import { BotContext } from "./commands/helpers";
+import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES, parseAndValidatePackageJson } from "./commands/helpers";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -82,27 +82,18 @@ bot.on("message", async (ctx) => {
   let pkg: Record<string, unknown> | null = null;
 
   if (isDocument) {
+    const { file_size, mime_type, file_name } = msg.document;
+    if (file_size && file_size > MAX_PACKAGE_JSON_BYTES) return;
+    const mime = mime_type ?? "";
+    const ext = (file_name ?? "").split(".").pop()?.toLowerCase() ?? "";
+    if (mime && !ALLOWED_MIME_TYPES.has(mime) && ext !== "json" && ext !== "txt") return;
     const fileLink = await ctx.telegram.getFileLink(msg.document.file_id);
     const res = await fetch(fileLink.href);
-    try {
-      const parsed = JSON.parse(await res.text());
-      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-        const p = parsed as Record<string, unknown>;
-        if (p.dependencies || p.devDependencies || p.peerDependencies) pkg = p;
-      }
-    } catch {
-      // Not valid JSON or not a package.json — ignore silently
-    }
+    const text = await res.text();
+    if (text.length > MAX_PACKAGE_JSON_BYTES) return;
+    pkg = parseAndValidatePackageJson(text);
   } else if (isJsonText) {
-    try {
-      const parsed = JSON.parse(msg.text);
-      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-        const p = parsed as Record<string, unknown>;
-        if (p.dependencies || p.devDependencies || p.peerDependencies) pkg = p;
-      }
-    } catch {
-      // Not JSON — ignore silently
-    }
+    pkg = parseAndValidatePackageJson(msg.text);
   }
 
   if (!pkg) return;

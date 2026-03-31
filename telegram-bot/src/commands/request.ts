@@ -1,7 +1,7 @@
 import { Scenes } from "telegraf";
 
 import { getAllSubscribers } from "../db/subscribers";
-import { BotContext } from "./helpers";
+import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES, parseAndValidatePackageJson } from "./helpers";
 
 export const REQUEST_SCENE_ID = "request";
 
@@ -16,9 +16,24 @@ async function resolvePackageJson(ctx: BotContext): Promise<Record<string, unkno
   let jsonText: string;
 
   if ("document" in msg) {
+    const { file_size, mime_type, file_name } = msg.document;
+    if (file_size && file_size > MAX_PACKAGE_JSON_BYTES) {
+      await ctx.reply("File is too large. Please send a package.json under 100 KB.");
+      return null;
+    }
+    const mime = mime_type ?? "";
+    const ext = (file_name ?? "").split(".").pop()?.toLowerCase() ?? "";
+    if (mime && !ALLOWED_MIME_TYPES.has(mime) && ext !== "json" && ext !== "txt") {
+      await ctx.reply("Unsupported file type. Please send a JSON file.");
+      return null;
+    }
     const fileLink = await ctx.telegram.getFileLink(msg.document.file_id);
     const res = await fetch(fileLink.href);
     jsonText = await res.text();
+    if (jsonText.length > MAX_PACKAGE_JSON_BYTES) {
+      await ctx.reply("File content is too large. Please send a package.json under 100 KB.");
+      return null;
+    }
   } else if ("text" in msg) {
     jsonText = msg.text;
   } else {
@@ -26,22 +41,11 @@ async function resolvePackageJson(ctx: BotContext): Promise<Record<string, unkno
     return null;
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    await ctx.reply("Invalid JSON. Please send a valid package.json.");
-    return null;
-  }
-
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    await ctx.reply("Invalid package.json format.");
-    return null;
-  }
-
-  const pkg = parsed as Record<string, unknown>;
-  if (!pkg.dependencies && !pkg.devDependencies) {
-    await ctx.reply("The package.json must contain at least one of: dependencies, devDependencies.");
+  const pkg = parseAndValidatePackageJson(jsonText);
+  if (!pkg) {
+    await ctx.reply(
+      "Invalid package.json. Ensure it contains dependencies, devDependencies, or peerDependencies with string version values.",
+    );
     return null;
   }
 
