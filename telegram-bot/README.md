@@ -6,7 +6,7 @@ Telegram bot interface for submitting npm package download requests and managing
 
 Registered and approved users can submit a `package.json` in two ways:
 
-- **Directly** — send a `package.json` file or paste JSON text containing `dependencies`/`devDependencies` at any time. The bot detects it automatically and starts a job without requiring a command.
+- **Directly** — send any file or paste JSON text containing `dependencies`, `devDependencies`, or `peerDependencies` at any time. The bot silently ignores files that don't parse as a valid package.json and starts a job for ones that do, without requiring a command.
 - **Via `/request`** — the bot prompts you to send the file or text, then processes it the same way.
 
 Both paths reply with the job ID and notify all subscribers.

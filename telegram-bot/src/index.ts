@@ -65,9 +65,9 @@ bot.on("message", async (ctx) => {
   if (wizardSession.__scenes?.current) return;
 
   const msg = ctx.message;
-  const isPackageJsonDoc = "document" in msg && msg.document.file_name === "package.json";
+  const isDocument = "document" in msg;
   const isJsonText = "text" in msg && msg.text.trimStart().startsWith("{");
-  if (!isPackageJsonDoc && !isJsonText) return;
+  if (!isDocument && !isJsonText) return;
 
   const client = await getClientByTelegramId(ctx.from!.id);
   if (!client) {
@@ -81,32 +81,24 @@ bot.on("message", async (ctx) => {
 
   let pkg: Record<string, unknown> | null = null;
 
-  if (isPackageJsonDoc) {
+  if (isDocument) {
     const fileLink = await ctx.telegram.getFileLink(msg.document.file_id);
     const res = await fetch(fileLink.href);
-    let parsed: unknown;
     try {
-      parsed = JSON.parse(await res.text());
+      const parsed = JSON.parse(await res.text());
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        const p = parsed as Record<string, unknown>;
+        if (p.dependencies || p.devDependencies || p.peerDependencies) pkg = p;
+      }
     } catch {
-      await ctx.reply("Invalid JSON. Please send a valid package.json.");
-      return;
+      // Not valid JSON or not a package.json — ignore silently
     }
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      await ctx.reply("Invalid package.json format.");
-      return;
-    }
-    const p = parsed as Record<string, unknown>;
-    if (!p.dependencies && !p.devDependencies) {
-      await ctx.reply("The package.json must contain at least one of: dependencies, devDependencies.");
-      return;
-    }
-    pkg = p;
   } else if (isJsonText) {
     try {
       const parsed = JSON.parse(msg.text);
       if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
         const p = parsed as Record<string, unknown>;
-        if (p.dependencies || p.devDependencies) pkg = p;
+        if (p.dependencies || p.devDependencies || p.peerDependencies) pkg = p;
       }
     } catch {
       // Not JSON — ignore silently
