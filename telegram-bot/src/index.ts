@@ -6,8 +6,8 @@ import { verifyIndexes as verifySubscriberIndexes } from "./db/subscribers";
 import { registerCommand } from "./commands/register";
 import { approveClientScene, APPROVE_SCENE_ID } from "./commands/approveClient";
 import { subscribeScene, unsubscribeScene, SUBSCRIBE_SCENE_ID, UNSUBSCRIBE_SCENE_ID } from "./commands/subscribe";
-import { requestScene, REQUEST_SCENE_ID, processPackageJsonRequest } from "./commands/request";
-import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES, parseAndValidatePackageJson } from "./commands/helpers";
+import { requestScene, REQUEST_SCENE_ID, processPackageJsonRequest, processNpmUrlRequest } from "./commands/request";
+import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES, parseAndValidatePackageJson, parseNpmUrl } from "./commands/helpers";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -67,7 +67,8 @@ bot.on("message", async (ctx) => {
   const msg = ctx.message;
   const isDocument = "document" in msg;
   const isJsonText = "text" in msg && msg.text.trimStart().startsWith("{");
-  if (!isDocument && !isJsonText) return;
+  const npmUrlParsed = "text" in msg ? parseNpmUrl(msg.text) : null;
+  if (!isDocument && !isJsonText && !npmUrlParsed) return;
 
   const client = await getClientByTelegramId(ctx.from!.id);
   if (!client) {
@@ -76,6 +77,11 @@ bot.on("message", async (ctx) => {
   }
   if (!client.isApproved) {
     await ctx.reply("Your account has not been approved yet. Please wait for an admin to approve you.");
+    return;
+  }
+
+  if (npmUrlParsed) {
+    await processNpmUrlRequest(ctx, npmUrlParsed.name, npmUrlParsed.version);
     return;
   }
 

@@ -63,3 +63,14 @@ export async function checkSecret(ctx: BotContext, text: string): Promise<boolea
   }
   return true;
 }
+
+const NPMJS_URL_REGEX =
+  /^https?:\/\/(?:www\.)?npmjs\.com\/package\/((?:@[^/\s]+\/[^/\s]+)|(?:[^@/\s][^/\s]*))(?:\/v\/([^\s/]+))?$/;
+
+// Returns { name, version } if text is a bare npmjs.com package URL, else null.
+// Version defaults to "latest" when no /v/<version> segment is present.
+export function parseNpmUrl(text: string): { name: string; version: string } | null {
+  const match = NPMJS_URL_REGEX.exec(text.trim());
+  if (!match) return null;
+  return { name: match[1], version: match[2] ?? "latest" };
+}

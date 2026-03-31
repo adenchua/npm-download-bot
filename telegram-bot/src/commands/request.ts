@@ -1,7 +1,7 @@
 import { Scenes } from "telegraf";
 
 import { getAllSubscribers } from "../db/subscribers";
-import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES, parseAndValidatePackageJson } from "./helpers";
+import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES, parseAndValidatePackageJson, parseNpmUrl } from "./helpers";
 
 export const REQUEST_SCENE_ID = "request";
 
@@ -96,17 +96,32 @@ export async function processPackageJsonRequest(ctx: BotContext, pkg: Record<str
   );
 }
 
+export async function processNpmUrlRequest(ctx: BotContext, name: string, version: string): Promise<void> {
+  const pkg: Record<string, unknown> = { dependencies: { [name]: version } };
+  await processPackageJsonRequest(ctx, pkg);
+}
+
 export const requestScene = new Scenes.WizardScene<BotContext>(
   REQUEST_SCENE_ID,
 
-  // Step 1 — prompt for package.json
+  // Step 1 — prompt for package.json or npm URL
   async (ctx) => {
-    await ctx.reply("Please send your package.json as a file or paste the JSON text.");
+    await ctx.reply(
+      "Please send your package.json as a file, paste the JSON text, or send an npmjs.com package URL (e.g. https://www.npmjs.com/package/react).",
+    );
     return ctx.wizard.next();
   },
 
   // Step 2 — validate, upload, start job
   async (ctx) => {
+    const msg = ctx.message;
+    if (msg && "text" in msg) {
+      const parsed = parseNpmUrl(msg.text);
+      if (parsed) {
+        await processNpmUrlRequest(ctx, parsed.name, parsed.version);
+        return ctx.scene.leave();
+      }
+    }
     const pkg = await resolvePackageJson(ctx);
     if (pkg === null) return;
     await processPackageJsonRequest(ctx, pkg);
