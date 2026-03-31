@@ -83,7 +83,10 @@ export async function processPackageJsonRequest(ctx: BotContext, pkg: Record<str
   });
 
   const subscribers = await getAllSubscribers();
-  const notification = `New download job started by @${ctx.from!.username ?? ctx.from!.id}:\n\`${id}\``;
+  const sender = ctx.from!.username
+    ? `@${ctx.from!.username}`
+    : (ctx.from!.first_name ?? String(ctx.from!.id));
+  const notification = `New download job started by ${sender}:\n\`${id}\``;
   await Promise.allSettled(
     subscribers.map((s) =>
       ctx.telegram.sendMessage(s.telegramId, notification, {

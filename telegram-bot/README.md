@@ -9,7 +9,7 @@ Registered and approved users can submit a `package.json` in two ways:
 - **Directly** — send any file or paste JSON text containing `dependencies`, `devDependencies`, or `peerDependencies` at any time. The bot silently ignores non-matching input and starts a job for valid package.json content, without requiring a command. Files must be under 100 KB and have a JSON-compatible MIME type or extension (`.json`, `.txt`, `application/json`, `text/plain`, `application/octet-stream`).
 - **Via `/request`** — the bot prompts you to send the file or text, then processes it the same way.
 
-Both paths reply with the job ID and notify all subscribers.
+Both paths reply with the job ID and notify all subscribers. The notification identifies the requester by `@username` if available, falling back to their first name, then their Telegram ID.
 
 ## Commands
 
