@@ -55,6 +55,19 @@ A standard `package.json` with any combination of `dependencies`, `devDependenci
 
 All three sections are merged and fully resolved before downloading. For peer dependencies, any version spec containing `||` or comparison operators (`>=`, `>`, etc.) is resolved to the latest matching concrete version. Simple peer dep ranges (`^`, `~`, exact) are passed through as-is. Peer deps already present in `dependencies`/`devDependencies` are not duplicated.
 
+Only the fields `name`, `version`, `dependencies`, `devDependencies`, and `peerDependencies` are saved — any other fields in the uploaded body are stripped before writing to disk.
+
+### Validation
+
+| Condition | Status | Error |
+|-----------|--------|-------|
+| Body is not a JSON object | `400` | `"Request body must be a JSON object"` |
+| None of the three dep fields are present | `422` | `"package.json must contain at least one of: dependencies, devDependencies, peerDependencies"` |
+| A dep field is not an object | `422` | `"\"<field>\" must be an object"` |
+| A dep field contains a non-string value | `422` | `"All values in \"<field>\" must be strings"` |
+
+The request body is capped at 100 KB by the HTTP server.
+
 ## Output format
 
 Each `output/<id>.zip` contains:
@@ -103,7 +116,7 @@ Requires a `.env` file — copy `.env.template` and set `SERVER_PORT` if needed.
 
 ## How it works
 
-1. **Upload** — `POST /upload` saves the `package.json` body to `input/<id>.json` and returns the ID
+1. **Upload** — `POST /upload` validates the body (object shape, at least one dep field, string values only), strips extra fields, saves to `input/<id>.json`, and returns the ID
 2. **Trigger** — `POST /jobs` starts a background job for that ID; responds 202 immediately
 3. **Resolve** — merges `dependencies`, `devDependencies`, and `peerDependencies` (resolving complex peer dep version ranges to concrete versions via `semver`), writes a merged `package.json` to a temp directory, and runs `npm install --ignore-scripts` to materialise the full dependency tree
 4. **Audit** — runs `npm audit --json` against the installed lock file and extracts vulnerability counts and HIGH/CRITICAL package names

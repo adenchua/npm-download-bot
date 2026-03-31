@@ -18,17 +18,36 @@ filesRouter.post("/upload", async (req: Request, res: Response) => {
     return;
   }
 
-  if (!body.dependencies && !body.devDependencies) {
+  if (!body.dependencies && !body.devDependencies && !body.peerDependencies) {
     res.status(422).json({
-      error: "package.json must contain at least one of: dependencies, devDependencies",
+      error: "package.json must contain at least one of: dependencies, devDependencies, peerDependencies",
     });
     return;
+  }
+
+  for (const field of ["dependencies", "devDependencies", "peerDependencies"] as const) {
+    const val = body[field];
+    if (val === undefined) continue;
+    if (typeof val !== "object" || val === null || Array.isArray(val)) {
+      res.status(422).json({ error: `"${field}" must be an object` });
+      return;
+    }
+    if (Object.values(val).some((v) => typeof v !== "string")) {
+      res.status(422).json({ error: `All values in "${field}" must be strings` });
+      return;
+    }
   }
 
   const datePrefix = format(new Date(), "yyyyMMdd");
   const todayCount = readdirSync(INPUT_DIR).filter((f) => f.startsWith(datePrefix) && f.endsWith(".json")).length;
   const id = `${datePrefix}-${format(new Date(), "HHmm")}-${todayCount + 1}`;
-  writeFileSync(join(INPUT_DIR, `${id}.json`), JSON.stringify(body, null, 2));
+  const b = body as Record<string, unknown>;
+  const sanitized = Object.fromEntries(
+    ["name", "version", "dependencies", "devDependencies", "peerDependencies"]
+      .filter((k) => b[k] !== undefined)
+      .map((k) => [k, b[k]]),
+  );
+  writeFileSync(join(INPUT_DIR, `${id}.json`), JSON.stringify(sanitized, null, 2));
 
   res.status(201).json({ id });
 });
