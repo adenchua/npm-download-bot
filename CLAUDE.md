@@ -8,6 +8,17 @@
 | `telegram-bot/` | Telegram bot for submitting download requests and managing user access |
 | `database/` | MongoDB schema definitions and init scripts |
 
+## Development commands
+
+Both `npm-download-service` and `telegram-bot` share the same scripts (run from the relevant package directory):
+
+| Command | Description |
+|---------|-------------|
+| `npm start` | Run with `tsx` — no build step; requires a populated `.env` |
+| `npm run dev` | Same as `start` but restarts on file changes |
+| `npm run build` | Compile TypeScript to `dist/` via `tsc` |
+| `npm run format` | Reformat all `src/**/*.{ts,js}` with Prettier |
+
 ## Docker Compose
 
 Four services with explicit health-check dependencies:
@@ -48,7 +59,7 @@ Volume mounts:
 | `telegram-bot/src/db/index.ts` | MongoDB connection management (`connectDb`, `getDb`, `closeDb`) |
 | `telegram-bot/src/db/clients.ts` | `clients` collection: `registerClient`, `approveClient`, `getClientByTelegramId`, `getPendingClients`, `verifyIndexes` |
 | `telegram-bot/src/db/subscribers.ts` | `subscribers` collection: `addSubscriber`, `removeSubscriber`, `getAllSubscribers`, `verifyIndexes` |
-| `telegram-bot/src/commands/helpers.ts` | Shared `BotContext` type, `getText`, `requireText`, `checkSecret` — imported by all command files |
+| `telegram-bot/src/commands/helpers.ts` | Shared helpers: `BotContext`, `getText`, `requireText`, `checkSecret`, `parseAndValidatePackageJson`, `MAX_PACKAGE_JSON_BYTES`, `ALLOWED_MIME_TYPES` |
 | `telegram-bot/src/commands/approveClient.ts` | 4-step wizard: prompt secret → validate → show inline keyboard of pending clients → confirm with Yes/No buttons → approve |
 | `telegram-bot/src/commands/subscribe.ts` | Two 2-step wizards: `subscribeScene` and `unsubscribeScene` |
 | `telegram-bot/src/commands/request.ts` | 2-step wizard: prompt for `package.json` → validate → `POST /upload` → `POST /jobs` → reply job ID → notify all subscribers. Exports `processPackageJsonRequest(ctx, pkg)` — shared by the wizard and the passive message handler in `index.ts` |
@@ -81,8 +92,6 @@ Volume mounts:
 
 **`TZ=Asia/Singapore` in containers** — `npm-download-service` and `telegram-bot` both set `TZ: Asia/Singapore` via `environment:` in `docker-compose.yml`. Without this, Node.js inside the container uses UTC, making all `date-fns` local-time calls produce UTC timestamps and UTC-offset IDs (`+00:00`).
 
-**`metadata.json`** — embedded in every archive alongside the tarballs.
-
 **Schema-driven DB initialisation** — `database/schemas/*.json` are the single source of truth for collection structure. `database/init/01-init.js` reads all JSON files generically on first MongoDB startup; adding a new collection means adding one JSON file with no changes to the init script.
 
 **`$setOnInsert` upsert for idempotent registration** — `registerClient` and `addSubscriber` use `updateOne({ telegramId }, { $setOnInsert: data }, { upsert: true })`. Re-registering returns `upsertedCount === 0` and is a complete no-op in the database; the original document is never overwritten.
@@ -93,9 +102,7 @@ Volume mounts:
 
 **`/cancel` middleware ordering** — the cancel command is registered on the bot after `session()` but before `stage.middleware()`. This ensures it intercepts `/cancel` before any active scene's step handlers can consume the message. It reads `ctx.session.__scenes.current` (via the typed `Scenes.WizardSession` cast) to detect whether a scene is active.
 
-**Shared wizard helpers** — `BotContext`, `getText`, `requireText`, `checkSecret`, `parseAndValidatePackageJson`, `MAX_PACKAGE_JSON_BYTES`, and `ALLOWED_MIME_TYPES` live in `commands/helpers.ts` and are imported by all command files.
-
-**`parseAndValidatePackageJson`** — shared helper used by both the passive handler (`index.ts`) and the wizard (`commands/request.ts`). It parses a JSON string, asserts the result is a non-array object with at least one of `dependencies`/`devDependencies`/`peerDependencies`, validates that all values in each dep field are strings (prevents resolver crashes), and returns only an allowlisted set of fields (`name`, `version`, `dependencies`, `devDependencies`, `peerDependencies`) — stripping any other keys before they reach `/upload`. Returns `null` on any failure.
+**Shared wizard helpers** — all shared helpers live in `commands/helpers.ts`. `parseAndValidatePackageJson(text)` is the key one: it parses a JSON string, asserts the result is a non-array object with at least one dep field, validates that all dep values are strings (prevents resolver crashes), and returns only the allowlisted fields (`name`, `version`, `dependencies`, `devDependencies`, `peerDependencies`) — stripping everything else before it reaches `/upload`. Returns `null` on any failure.
 
 **Passive package.json detection** — `index.ts` registers a `bot.on('message')` handler (after all commands) that automatically processes messages as a `/request` without the user typing a command. It triggers when a registered+approved user sends any document or text starting with `{`. Before downloading a document, the handler checks `file_size` (>100 KB → silent return) and `mime_type`/file extension against `ALLOWED_MIME_TYPES` (`application/json`, `text/plain`, `text/json`, `application/octet-stream`, `.json`, `.txt`); unrecognised types are silently ignored. After downloading, body length is rechecked as defence-in-depth. Both document and text paths use `parseAndValidatePackageJson` and silently ignore invalid input. The upload+job+notify logic lives in the exported `processPackageJsonRequest` in `commands/request.ts`, shared with the wizard. The wizard applies the same size and MIME checks but replies with error messages instead of silently ignoring.
 
