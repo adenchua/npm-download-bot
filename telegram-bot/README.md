@@ -4,10 +4,10 @@ Telegram bot interface for submitting npm package download requests and managing
 
 ## Submitting a request
 
-Registered and approved users can submit a `package.json` in two ways:
+Registered and approved users can submit a request in three ways:
 
-- **Directly** — send any file or paste JSON text containing `dependencies`, `devDependencies`, or `peerDependencies` at any time. The bot silently ignores non-matching input and starts a job for valid package.json content, without requiring a command. Files must be under 100 KB and have a JSON-compatible MIME type or extension (`.json`, `.txt`, `application/json`, `text/plain`, `application/octet-stream`).
-- **Via `/request`** — the bot prompts you to send the file or text, then processes it the same way.
+- **Directly** — send any file, paste JSON text containing `dependencies`, `devDependencies`, or `peerDependencies`, or paste an npmjs.com package URL (e.g. `https://www.npmjs.com/package/react` or `https://www.npmjs.com/package/react/v/18.2.0`) at any time. The bot silently ignores non-matching input and starts a job, without requiring a command. Files must be under 100 KB and have a JSON-compatible MIME type or extension (`.json`, `.txt`, `application/json`, `text/plain`, `application/octet-stream`). When a URL is used without a version segment, the latest version is requested.
+- **Via `/request`** — the bot prompts you to send the file, text, or npm URL, then processes it the same way.
 
 Both paths reply with the job ID and notify all subscribers. The notification identifies the requester by `@username` if available, falling back to their first name, then their Telegram ID.
 
@@ -18,7 +18,7 @@ Both paths reply with the job ID and notify all subscribers. The notification id
 | `/start` | Welcome message | — |
 | `/help` | List commands | — |
 | `/register` | Register your account (sets `isApproved: false`; an admin must approve before you can submit requests) | — |
-| `/request` | Prompted flow: submit a `package.json` (file or pasted text) to queue a download job | Registered + approved |
+| `/request` | Prompted flow: submit a `package.json` (file or pasted text) or an npmjs.com URL to queue a download job | Registered + approved |
 | `/subscribe` | Subscribe to job notifications | `APPROVE_SECRET` |
 | `/unsubscribe` | Unsubscribe from job notifications | `APPROVE_SECRET` |
 | `/approve_client` | Approve a registered client by Telegram ID or username | `APPROVE_SECRET` |
