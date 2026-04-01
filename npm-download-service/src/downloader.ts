@@ -4,12 +4,12 @@ import { formatISO } from "date-fns";
 import { createWriteStream, mkdirSync, mkdtempSync, readdirSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 
 import { AuditReport, PackageMetadata, ResolvedPackage } from "./types";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 function tarballName(name: string, version: string): string {
   // @scope/pkg -> scope-pkg-<version>.tgz
@@ -34,7 +34,7 @@ export async function downloadAndZip(packages: ResolvedPackage[], id: string, au
     for (const pkg of packages) {
       const ref = `${pkg.name}@${pkg.version}`;
       try {
-        await execAsync(`npm pack ${ref} --pack-destination "${tmpDir}"`, {
+        await execFileAsync("npm", ["pack", ref, "--pack-destination", tmpDir], {
           maxBuffer: 1024 * 1024 * 1024,
         });
         const tarball = tarballName(pkg.name, pkg.version);

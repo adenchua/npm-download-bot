@@ -3,12 +3,13 @@ import semver from "semver";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 
 import { AuditReport, AuditSeverityCounts, PackageJson, ResolvedPackage, ResolverResult } from "./types";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export async function resolveAllDependencies(packageJsonPath: string): Promise<ResolverResult> {
   const raw = readFileSync(packageJsonPath, "utf-8");
@@ -159,7 +160,7 @@ async function runAudit(cwd: string, resolvedPackages: ResolvedPackage[]): Promi
 
 export async function resolveVersionRange(packageName: string, versionRange: string): Promise<string | null> {
   try {
-    const { stdout } = await execAsync(`npm view ${packageName} versions --json`, { maxBuffer: 10 * 1024 * 1024 });
+    const { stdout } = await execFileAsync("npm", ["view", packageName, "versions", "--json"], { maxBuffer: 10 * 1024 * 1024 });
     const versions: string[] = JSON.parse(stdout);
     return semver.maxSatisfying(versions, versionRange);
   } catch {

@@ -67,10 +67,21 @@ export async function checkSecret(ctx: BotContext, text: string): Promise<boolea
 const NPMJS_URL_REGEX =
   /^https?:\/\/(?:www\.)?npmjs\.com\/package\/((?:@[^/\s]+\/[^/\s]+)|(?:[^@/\s][^/\s]*))(?:\/v\/([^\s/]+))?$/;
 
-// Returns { name, version } if text is a bare npmjs.com package URL, else null.
+// Valid npm package names: lowercase, URL-safe, optional @scope/name format.
+const NPM_NAME_REGEX = /^(?:@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*|[a-z0-9][a-z0-9._-]*)$/;
+// Valid npm version in a URL context: exact semver or dist-tag (no shell metacharacters).
+const NPM_VERSION_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9._+\-]*$/;
+
+// Returns { name, version } if text is an npmjs.com package URL, else null.
+// Query string and fragment are stripped before matching.
 // Version defaults to "latest" when no /v/<version> segment is present.
 export function parseNpmUrl(text: string): { name: string; version: string } | null {
-  const match = NPMJS_URL_REGEX.exec(text.trim());
+  const stripped = text.trim().split("?")[0].split("#")[0];
+  const match = NPMJS_URL_REGEX.exec(stripped);
   if (!match) return null;
-  return { name: match[1], version: match[2] ?? "latest" };
+  const name = match[1];
+  const version = match[2] ?? "latest";
+  if (name.length > 214 || !NPM_NAME_REGEX.test(name)) return null;
+  if (version.length > 64 || !NPM_VERSION_REGEX.test(version)) return null;
+  return { name, version };
 }
