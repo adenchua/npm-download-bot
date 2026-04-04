@@ -3,7 +3,15 @@ import { format } from "date-fns";
 
 import { getPendingJobs, updateJobStatus, getJobByJobId, JobDocument } from "../db/jobs";
 import { getClientById, ClientDocument } from "../db/clients";
-import { BotContext, requireText, checkSecret } from "./helpers";
+import {
+  BotContext,
+  requireText,
+  checkSecret,
+  formatClientName,
+  requireCallbackData,
+  CALLBACK_PREFIXES,
+  SECRET_PROMPT_STEP,
+} from "./helpers";
 
 export const NOTIFY_CLIENT_SCENE_ID = "notify_client";
 
@@ -12,21 +20,36 @@ interface NotifyState {
 }
 
 function jobButtonLabel(job: JobDocument, client: ClientDocument): string {
-  const nameParts = [client.firstName, client.lastName].filter(Boolean);
-  const fullName = nameParts.join(" ");
   const handle = client.username ? ` (@${client.username})` : "";
   const date = format(job.startedAt, "dd MMM yyyy HH:mm");
-  return `${job.jobId} — ${fullName}${handle} [${date}]`;
+  return `${job.jobId} — ${formatClientName(client)}${handle} [${date}]`;
+}
+
+async function sendJobOutcomeToClient(
+  ctx: BotContext,
+  client: ClientDocument,
+  status: "success" | "failed",
+  jobId: string,
+): Promise<boolean> {
+  const clientMessage =
+    status === "success"
+      ? `Your download job \`${jobId}\` has completed successfully. ✓`
+      : `Your download job \`${jobId}\` failed to complete. Please submit a new request or contact an admin.`;
+
+  try {
+    await ctx.telegram.sendMessage(client.telegramId, clientMessage, { parse_mode: "Markdown" });
+    return true;
+  } catch (err) {
+    console.error(`Failed to notify client ${client.telegramId}:`, err);
+    return false;
+  }
 }
 
 export const notifyClientScene = new Scenes.WizardScene<BotContext>(
   NOTIFY_CLIENT_SCENE_ID,
 
   // Step 1 — prompt for secret
-  async (ctx) => {
-    await ctx.reply("Enter the admin secret:");
-    return ctx.wizard.next();
-  },
+  SECRET_PROMPT_STEP,
 
   // Step 2 — validate secret, show last 5 pending jobs
   async (ctx) => {
@@ -52,7 +75,7 @@ export const notifyClientScene = new Scenes.WizardScene<BotContext>(
     }
 
     const buttons = jobsWithClients.map(({ job, client }) => [
-      Markup.button.callback(jobButtonLabel(job, client), `job:${job.jobId}`),
+      Markup.button.callback(jobButtonLabel(job, client), `${CALLBACK_PREFIXES.SELECT_JOB}${job.jobId}`),
     ]);
 
     await ctx.reply("Select a job to update:", Markup.inlineKeyboard(buttons));
@@ -61,20 +84,18 @@ export const notifyClientScene = new Scenes.WizardScene<BotContext>(
 
   // Step 3 — handle job selection, show Success / Failed buttons
   async (ctx) => {
-    const cbq = ctx.callbackQuery;
-    if (!cbq || !("data" in cbq) || !cbq.data.startsWith("job:")) {
-      await ctx.reply("Please select a job from the list above.");
-      return;
-    }
-    await ctx.answerCbQuery();
+    const selectedJobId = await requireCallbackData(ctx, CALLBACK_PREFIXES.SELECT_JOB, "Please select a job from the list above.");
+    if (selectedJobId === null) return;
 
-    const selectedJobId = cbq.data.slice("job:".length);
     (ctx.wizard.state as NotifyState).selectedJobId = selectedJobId;
 
     await ctx.reply(`Selected job: \`${selectedJobId}\`\n\nWhat was the outcome?`, {
       parse_mode: "Markdown",
       ...Markup.inlineKeyboard([
-        [Markup.button.callback("Success", "outcome:success"), Markup.button.callback("Failed", "outcome:failed")],
+        [
+          Markup.button.callback("Success", `${CALLBACK_PREFIXES.SELECT_OUTCOME}success`),
+          Markup.button.callback("Failed", `${CALLBACK_PREFIXES.SELECT_OUTCOME}failed`),
+        ],
       ]),
     });
     return ctx.wizard.next();
@@ -82,12 +103,8 @@ export const notifyClientScene = new Scenes.WizardScene<BotContext>(
 
   // Step 4 — handle outcome, update DB, notify client
   async (ctx) => {
-    const cbq = ctx.callbackQuery;
-    if (!cbq || !("data" in cbq) || !cbq.data.startsWith("outcome:")) {
-      await ctx.reply("Please use the Success / Failed buttons above.");
-      return;
-    }
-    await ctx.answerCbQuery();
+    const outcome = await requireCallbackData(ctx, CALLBACK_PREFIXES.SELECT_OUTCOME, "Please use the Success / Failed buttons above.");
+    if (outcome === null) return;
 
     const { selectedJobId } = ctx.wizard.state as NotifyState;
     if (!selectedJobId) {
@@ -95,8 +112,7 @@ export const notifyClientScene = new Scenes.WizardScene<BotContext>(
       return ctx.scene.leave();
     }
 
-    const outcomeRaw = cbq.data.slice("outcome:".length);
-    const status = outcomeRaw === "success" ? "success" : "failed";
+    const status = outcome === "success" ? "success" : "failed";
 
     const updated = await updateJobStatus(selectedJobId, status, ctx.from!.id);
     if (!updated) {
@@ -116,15 +132,8 @@ export const notifyClientScene = new Scenes.WizardScene<BotContext>(
       return ctx.scene.leave();
     }
 
-    const clientMessage =
-      status === "success"
-        ? `Your download job \`${selectedJobId}\` has completed successfully. ✓`
-        : `Your download job \`${selectedJobId}\` failed to complete. Please submit a new request or contact an admin.`;
-
-    try {
-      await ctx.telegram.sendMessage(client.telegramId, clientMessage, { parse_mode: "Markdown" });
-    } catch (err) {
-      console.error(`Failed to notify client ${client.telegramId}:`, err);
+    const notified = await sendJobOutcomeToClient(ctx, client, status, selectedJobId);
+    if (!notified) {
       await ctx.reply(
         `Job \`${selectedJobId}\` marked as ${status}, but the client notification could not be delivered.`,
         { parse_mode: "Markdown" },

@@ -1,5 +1,7 @@
 import { Scenes } from "telegraf";
 
+import { ClientDocument } from "../db/clients";
+
 export type BotContext = Scenes.WizardContext;
 
 export const MAX_PACKAGE_JSON_BYTES = 100 * 1024; // 100 KB
@@ -63,6 +65,35 @@ export async function checkSecret(ctx: BotContext, text: string): Promise<boolea
   }
   return true;
 }
+
+export const CALLBACK_PREFIXES = {
+  SELECT_CLIENT: "select:",
+  CONFIRM_ACTION: "confirm:",
+  SELECT_JOB: "job:",
+  SELECT_OUTCOME: "outcome:",
+} as const;
+
+export function formatClientName(client: ClientDocument): string {
+  return [client.firstName, client.lastName].filter(Boolean).join(" ");
+}
+
+// Validates a callback query with the given prefix. On success, answers the query and
+// returns the data string after the prefix. On failure, replies with errorMsg and returns null.
+export async function requireCallbackData(ctx: BotContext, prefix: string, errorMsg: string): Promise<string | null> {
+  const cbq = ctx.callbackQuery;
+  if (!cbq || !("data" in cbq) || !cbq.data.startsWith(prefix)) {
+    await ctx.reply(errorMsg);
+    return null;
+  }
+  await ctx.answerCbQuery();
+  return cbq.data.slice(prefix.length);
+}
+
+// Shared first wizard step for all admin-gated scenes.
+export const SECRET_PROMPT_STEP = async (ctx: BotContext) => {
+  await ctx.reply("Enter the admin secret:");
+  return ctx.wizard.next();
+};
 
 const NPMJS_URL_REGEX =
   /^https?:\/\/(?:www\.)?npmjs\.com\/package\/((?:@[^/\s]+\/[^/\s]+)|(?:[^@/\s][^/\s]*))(?:\/v\/([^\s/]+))?$/;

@@ -1,7 +1,7 @@
 import { Scenes } from "telegraf";
 
 import { addSubscriber, removeSubscriber } from "../db/subscribers";
-import { BotContext, requireText, checkSecret } from "./helpers";
+import { BotContext, requireText, checkSecret, SECRET_PROMPT_STEP } from "./helpers";
 
 export const SUBSCRIBE_SCENE_ID = "subscribe";
 export const UNSUBSCRIBE_SCENE_ID = "unsubscribe";
@@ -10,10 +10,7 @@ export const subscribeScene = new Scenes.WizardScene<BotContext>(
   SUBSCRIBE_SCENE_ID,
 
   // Step 1 — prompt for secret
-  async (ctx) => {
-    await ctx.reply("Enter the admin secret:");
-    return ctx.wizard.next();
-  },
+  SECRET_PROMPT_STEP,
 
   // Step 2 — validate secret, then subscribe
   async (ctx) => {
@@ -35,10 +32,7 @@ export const unsubscribeScene = new Scenes.WizardScene<BotContext>(
   UNSUBSCRIBE_SCENE_ID,
 
   // Step 1 — prompt for secret
-  async (ctx) => {
-    await ctx.reply("Enter the admin secret:");
-    return ctx.wizard.next();
-  },
+  SECRET_PROMPT_STEP,
 
   // Step 2 — validate secret, then unsubscribe
   async (ctx) => {
