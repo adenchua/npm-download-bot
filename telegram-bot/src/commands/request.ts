@@ -1,5 +1,7 @@
 import { Scenes } from "telegraf";
 
+import { addJob } from "../db/jobs";
+import { getClientByTelegramId } from "../db/clients";
 import { getAllSubscribers } from "../db/subscribers";
 import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES, parseAndValidatePackageJson, parseNpmUrl } from "./helpers";
 
@@ -66,6 +68,15 @@ export async function processPackageJsonRequest(ctx: BotContext, pkg: Record<str
     console.error("Upload error:", err);
     await ctx.reply("Failed to upload package.json. Please try again later.");
     return;
+  }
+
+  const client = await getClientByTelegramId(ctx.from!.id);
+  if (client) {
+    try {
+      await addJob({ clientId: client._id, jobId: id, startedAt: new Date() });
+    } catch (err) {
+      console.error("Job record error:", err);
+    }
   }
 
   try {

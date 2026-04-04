@@ -1,4 +1,4 @@
-import { WithId } from "mongodb";
+import { ObjectId, WithId } from "mongodb";
 
 import { getDb } from ".";
 
@@ -62,4 +62,8 @@ export async function getPendingClients(limit: number): Promise<ClientDocument[]
 export async function deleteClient(telegramId: number): Promise<boolean> {
   const result = await col().deleteOne({ telegramId });
   return result.deletedCount > 0;
+}
+
+export async function getClientById(id: ObjectId): Promise<ClientDocument | null> {
+  return col().findOne({ _id: id });
 }

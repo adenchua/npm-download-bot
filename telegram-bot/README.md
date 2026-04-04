@@ -22,6 +22,7 @@ Both paths reply with the job ID and notify all subscribers. The notification id
 | `/subscribe` | Subscribe to job notifications | `APPROVE_SECRET` |
 | `/unsubscribe` | Unsubscribe from job notifications | `APPROVE_SECRET` |
 | `/approve_client` | Approve a registered client by Telegram ID or username | `APPROVE_SECRET` |
+| `/notify_client` | Mark one of the last 5 pending jobs as success or failed and notify the original requestor | `APPROVE_SECRET` |
 | `/cancel` | Cancel the current active conversation | — |
 
 Commands marked **`APPROVE_SECRET`** start a 2-step conversation: the bot first asks for the admin secret, then performs the action only if it matches.

@@ -1,0 +1,17 @@
+{
+  "collection": "jobs",
+  "indexes": [
+    {
+      "key": { "jobId": 1 },
+      "options": { "unique": true, "name": "job" }
+    },
+    {
+      "key": { "clientId": 1 },
+      "options": { "name": "jobsByClient" }
+    },
+    {
+      "key": { "startedAt": -1 },
+      "options": { "name": "jobsByDate" }
+    }
+  ]
+}

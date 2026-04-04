@@ -8,6 +8,7 @@ MongoDB configuration and schema definitions for the npm-download-bot system.
 |------------|--------|--------------|
 | `clients` | `telegramId`, `username` (optional), `registeredAt`, `isApproved` | `telegramId` (name: `client`) |
 | `subscribers` | `telegramId`, `username` (optional), `subscribedAt` | `telegramId` (name: `subscriber`) |
+| `jobs` | `clientId` (ref: `clients._id`), `jobId`, `startedAt`, `status` (optional: `"success"` \| `"failed"`), `completedAt` (optional), `completedBy` (optional: Telegram ID of the resolving admin) | `jobId` (name: `job`); index on `clientId` (name: `jobsByClient`); descending index on `startedAt` (name: `jobsByDate`) |
 
 ## Schema-driven initialisation
 

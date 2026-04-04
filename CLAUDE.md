@@ -58,12 +58,14 @@ Volume mounts:
 |------|------|
 | `telegram-bot/src/index.ts` | Bot entry point; registers middleware (session → cancel → stage), all command handlers, `bot.on('message')` passive package.json handler, startup validation of env vars and DB indexes |
 | `telegram-bot/src/db/index.ts` | MongoDB connection management (`connectDb`, `getDb`, `closeDb`) |
-| `telegram-bot/src/db/clients.ts` | `clients` collection: `registerClient`, `approveClient`, `getClientByTelegramId`, `getPendingClients`, `verifyIndexes` |
+| `telegram-bot/src/db/clients.ts` | `clients` collection: `registerClient`, `approveClient`, `getClientByTelegramId`, `getClientById`, `getPendingClients`, `verifyIndexes` |
 | `telegram-bot/src/db/subscribers.ts` | `subscribers` collection: `addSubscriber`, `removeSubscriber`, `getAllSubscribers`, `verifyIndexes` |
+| `telegram-bot/src/db/jobs.ts` | `jobs` collection: `addJob`, `getPendingJobs`, `updateJobStatus`, `getJobByJobId`, `verifyIndexes` — records each download request with `clientId`, `jobId`, `startedAt`; optional `status` (`"success"` \| `"failed"`), `completedAt`, and `completedBy` (Telegram ID of the admin who resolved it) set by `/notify_client` |
 | `telegram-bot/src/commands/helpers.ts` | Shared helpers: `BotContext`, `getText`, `requireText`, `checkSecret`, `parseAndValidatePackageJson`, `parseNpmUrl`, `MAX_PACKAGE_JSON_BYTES`, `ALLOWED_MIME_TYPES` |
 | `telegram-bot/src/commands/approveClient.ts` | 4-step wizard: prompt secret → validate → show inline keyboard of pending clients → confirm with Yes/No buttons → approve |
+| `telegram-bot/src/commands/notifyClient.ts` | 4-step wizard: prompt secret → validate → show inline keyboard of last 5 pending jobs (no `status` field) → select job → Success/Failed buttons → update `status`/`completedAt`/`completedBy` in DB → send outcome message to original requestor |
 | `telegram-bot/src/commands/subscribe.ts` | Two 2-step wizards: `subscribeScene` and `unsubscribeScene` |
-| `telegram-bot/src/commands/request.ts` | 2-step wizard: prompt for `package.json` or npmjs.com URL → validate → `POST /upload` → `POST /jobs` → reply job ID → notify all subscribers. Exports `processPackageJsonRequest(ctx, pkg)` and `processNpmUrlRequest(ctx, name, version)` — both shared by the wizard and the passive message handler in `index.ts` |
+| `telegram-bot/src/commands/request.ts` | 2-step wizard: prompt for `package.json` or npmjs.com URL → validate → `POST /upload` → record job in `jobs` collection → `POST /jobs` → reply job ID → notify all subscribers. Exports `processPackageJsonRequest(ctx, pkg)` and `processNpmUrlRequest(ctx, name, version)` — both shared by the wizard and the passive message handler in `index.ts` |
 
 ## database source map
 
@@ -71,6 +73,7 @@ Volume mounts:
 |------|------|
 | `database/schemas/clients.json` | Collection + unique index definition for `clients` |
 | `database/schemas/subscribers.json` | Collection + unique index definition for `subscribers` |
+| `database/schemas/jobs.json` | Collection + unique index on `jobId` (name: `job`) + index on `clientId` (name: `jobsByClient`) + descending index on `startedAt` (name: `jobsByDate`) for `jobs` |
 | `database/init/01-init.js` | mongosh init script; reads every `*.json` from `/schemas`, creates collections and indexes |
 
 ## Architectural decisions
@@ -101,7 +104,7 @@ Volume mounts:
 
 **`$setOnInsert` upsert for idempotent registration** — `registerClient` and `addSubscriber` use `updateOne({ telegramId }, { $setOnInsert: data }, { upsert: true })`. Re-registering returns `upsertedCount === 0` and is a complete no-op in the database; the original document is never overwritten.
 
-**`verifyIndexes()` at startup** — both `clients.ts` and `subscribers.ts` expose a `verifyIndexes()` function that checks for the required unique index by name. Both are called in `main()` before `bot.launch()`. The bot refuses to start if the indexes are missing, which catches the case where the DB volume predates the init scripts.
+**`verifyIndexes()` at startup** — `clients.ts`, `subscribers.ts`, and `jobs.ts` each expose a `verifyIndexes()` function that checks for the required named indexes. All three are called in `main()` before `bot.launch()`. The bot refuses to start if any index is missing, which catches the case where the DB volume predates the init scripts. `jobs.ts` checks for both `"job"` (unique, on `jobId`) and `"jobsByDate"` (on `startedAt`).
 
 **`APPROVE_SECRET` as an admin gate** — the secret is read from `process.env.APPROVE_SECRET` once at module load in `commands/helpers.ts`. All commands that require it start a wizard conversation: the bot prompts for the secret as the first step and validates it before proceeding.
 
@@ -111,7 +114,7 @@ Volume mounts:
 
 **Passive package detection** — `index.ts` registers a `bot.on('message')` handler (after all commands) that automatically processes messages as a `/request` without the user typing a command. It triggers when a registered+approved user sends any document, text starting with `{`, or an npmjs.com package URL. Before downloading a document, the handler checks `file_size` (>100 KB → silent return) and `mime_type`/file extension against `ALLOWED_MIME_TYPES` (`application/json`, `text/plain`, `text/json`, `application/octet-stream`, `.json`, `.txt`); unrecognised types are silently ignored. After downloading, body length is rechecked as defence-in-depth. Both document and text paths use `parseAndValidatePackageJson` and silently ignore invalid input. npm URL inputs are handled by `parseNpmUrl` and routed to `processNpmUrlRequest`. The upload+job+notify logic lives in `commands/request.ts`, shared with the wizard. The wizard applies the same size and MIME checks but replies with error messages instead of silently ignoring.
 
-**`/help` lists only user-facing commands** — admin commands (`/subscribe`, `/unsubscribe`, `/approve_client`) are intentionally omitted from the `/help` reply to keep the interface clean for regular users.
+**`/help` lists only user-facing commands** — admin commands (`/subscribe`, `/unsubscribe`, `/approve_client`, `/notify_client`) are intentionally omitted from the `/help` reply to keep the interface clean for regular users.
 
 ## Known gotchas
 
@@ -126,6 +129,10 @@ Volume mounts:
 - **`verifyIndexes` requires DB init** — if the MongoDB data volume already exists from before the init scripts were added, the required indexes will be absent and the bot will refuse to start. Run `docker compose down -v && docker compose up` to re-initialise the database.
 
 - **`/cancel` uses `delete wizardSession.__scenes.current`** — assigning `{}` to `__scenes` fails TypeScript because `WizardSessionData.cursor` is a required field. Deleting only the `current` key is the correct approach; it removes the scene marker without touching other session data.
+
+- **`jobs.status` absent means pending** — the `status` field is optional on `Job`. Documents created by `addJob` never set it, so `{ status: { $exists: false } }` is the correct filter for pending jobs. Do not add a default `status: "pending"` string value — that would break the filter and require a migration.
+
+- **`/notify_client` re-fetches job in step 4** — `ctx.wizard.state` stores only the `jobId` string, not the `clientId` ObjectId. ObjectIds lose their prototype through Telegraf's session serialisation and become plain objects. Re-fetching the job document by `jobId` in the final step is the correct pattern.
 
 ## TypeScript compilation
 

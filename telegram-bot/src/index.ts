@@ -3,8 +3,10 @@ import { Telegraf, Scenes, session } from "telegraf";
 import { connectDb, closeDb } from "./db";
 import { getClientByTelegramId, verifyIndexes as verifyClientIndexes } from "./db/clients";
 import { verifyIndexes as verifySubscriberIndexes } from "./db/subscribers";
+import { verifyIndexes as verifyJobIndexes } from "./db/jobs";
 import { registerCommand } from "./commands/register";
 import { approveClientScene, APPROVE_SCENE_ID } from "./commands/approveClient";
+import { notifyClientScene, NOTIFY_CLIENT_SCENE_ID } from "./commands/notifyClient";
 import { subscribeScene, unsubscribeScene, SUBSCRIBE_SCENE_ID, UNSUBSCRIBE_SCENE_ID } from "./commands/subscribe";
 import { requestScene, REQUEST_SCENE_ID, processPackageJsonRequest, processNpmUrlRequest } from "./commands/request";
 import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES, parseAndValidatePackageJson, parseNpmUrl } from "./commands/helpers";
@@ -16,7 +18,7 @@ if (!token) {
 
 const bot = new Telegraf<BotContext>(token);
 
-const stage = new Scenes.Stage<BotContext>([approveClientScene, subscribeScene, unsubscribeScene, requestScene]);
+const stage = new Scenes.Stage<BotContext>([approveClientScene, notifyClientScene, subscribeScene, unsubscribeScene, requestScene]);
 bot.use(session());
 
 bot.command("cancel", async (ctx) => {
@@ -45,6 +47,7 @@ bot.help((ctx) =>
 
 bot.command("register", registerCommand);
 bot.command("approve_client", (ctx) => ctx.scene.enter(APPROVE_SCENE_ID));
+bot.command("notify_client", (ctx) => ctx.scene.enter(NOTIFY_CLIENT_SCENE_ID));
 bot.command("subscribe", (ctx) => ctx.scene.enter(SUBSCRIBE_SCENE_ID));
 bot.command("unsubscribe", (ctx) => ctx.scene.enter(UNSUBSCRIBE_SCENE_ID));
 bot.command("request", async (ctx) => {
@@ -117,6 +120,7 @@ async function main() {
   await connectDb();
   await verifyClientIndexes();
   await verifySubscriberIndexes();
+  await verifyJobIndexes();
   bot.launch();
   console.log("Telegram bot is running");
 }
