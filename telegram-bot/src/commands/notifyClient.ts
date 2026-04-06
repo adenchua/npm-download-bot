@@ -87,6 +87,16 @@ export const notifyClientScene = new Scenes.WizardScene<BotContext>(
     const selectedJobId = await requireCallbackData(ctx, CALLBACK_PREFIXES.SELECT_JOB, "Please select a job from the list above.");
     if (selectedJobId === null) return;
 
+    const selectedJob = await getJobByJobId(selectedJobId);
+    if (!selectedJob) {
+      await ctx.reply("Job not found.");
+      return ctx.scene.leave();
+    }
+    if (selectedJob.status) {
+      await ctx.reply(`Job \`${selectedJobId}\` has already been resolved as *${selectedJob.status}*.`, { parse_mode: "Markdown" });
+      return ctx.scene.leave();
+    }
+
     (ctx.wizard.state as NotifyState).selectedJobId = selectedJobId;
 
     await ctx.reply(`Selected job: \`${selectedJobId}\`\n\nWhat was the outcome?`, {
@@ -112,17 +122,21 @@ export const notifyClientScene = new Scenes.WizardScene<BotContext>(
       return ctx.scene.leave();
     }
 
+    const job = await getJobByJobId(selectedJobId);
+    if (!job) {
+      await ctx.reply("Job not found.");
+      return ctx.scene.leave();
+    }
+    if (job.status) {
+      await ctx.reply(`Job \`${selectedJobId}\` has already been resolved as *${job.status}*.`, { parse_mode: "Markdown" });
+      return ctx.scene.leave();
+    }
+
     const status = outcome === "success" ? "success" : "failed";
 
     const updated = await updateJobStatus(selectedJobId, status, ctx.from!.id);
     if (!updated) {
       await ctx.reply("Job not found.");
-      return ctx.scene.leave();
-    }
-
-    const job = await getJobByJobId(selectedJobId);
-    if (!job) {
-      await ctx.reply("Job updated but could not be re-fetched — no notification sent.");
       return ctx.scene.leave();
     }
 
