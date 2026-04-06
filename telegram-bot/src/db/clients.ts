@@ -11,6 +11,7 @@ export interface Client {
   lastName?: string;
   registeredAt: Date;
   isApproved: boolean;
+  isAdmin?: boolean;
 }
 
 export type ClientDocument = WithId<Client>;
@@ -60,4 +61,23 @@ export async function deleteClient(telegramId: number): Promise<boolean> {
 
 export async function getClientById(id: ObjectId): Promise<ClientDocument | null> {
   return col().findOne({ _id: id });
+}
+
+export async function grantAdmin(
+  telegramId: number,
+  fromData: { username?: string; firstName: string; lastName?: string },
+): Promise<void> {
+  await col().updateOne(
+    { telegramId },
+    {
+      $set: { isAdmin: true, isApproved: true },
+      $setOnInsert: {
+        username: fromData.username,
+        firstName: fromData.firstName,
+        lastName: fromData.lastName,
+        registeredAt: new Date(),
+      },
+    },
+    { upsert: true },
+  );
 }

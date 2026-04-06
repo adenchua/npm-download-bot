@@ -1,6 +1,11 @@
 import { Scenes } from "telegraf";
 
-import { ClientDocument } from "../db/clients";
+import { ClientDocument, getClientByTelegramId, grantAdmin } from "../db/clients";
+import { addSubscriber } from "../db/subscribers";
+
+interface AdminState {
+  isAdmin?: boolean;
+}
 
 export type BotContext = Scenes.WizardContext;
 
@@ -57,12 +62,21 @@ export async function requireText(ctx: BotContext): Promise<string | null> {
 }
 
 // Returns true if the secret matches. On failure replies, leaves the scene, returns false.
+// Short-circuits to true if ctx.wizard.state already has isAdmin set (admin bypass path).
+// On first successful validation, persists isAdmin via grantAdmin().
 export async function checkSecret(ctx: BotContext, text: string): Promise<boolean> {
+  if ((ctx.wizard.state as AdminState).isAdmin) return true;
   if (text !== secret) {
     await ctx.reply("Incorrect secret.");
     await ctx.scene.leave();
     return false;
   }
+  await grantAdmin(ctx.from!.id, {
+    username: ctx.from!.username,
+    firstName: ctx.from!.first_name,
+    lastName: ctx.from!.last_name,
+  });
+  await addSubscriber({ telegramId: ctx.from!.id, username: ctx.from!.username, subscribedAt: new Date() });
   return true;
 }
 
@@ -90,7 +104,18 @@ export async function requireCallbackData(ctx: BotContext, prefix: string, error
 }
 
 // Shared first wizard step for all admin-gated scenes.
+// If the user is a known admin, bypasses the secret prompt by jumping to and executing step 1 directly.
 export const SECRET_PROMPT_STEP = async (ctx: BotContext) => {
+  const client = await getClientByTelegramId(ctx.from!.id);
+  if (client?.isAdmin) {
+    (ctx.wizard.state as AdminState).isAdmin = true;
+    ctx.wizard.selectStep(1);
+    const step1 = ctx.wizard.step;
+    if (step1 && typeof step1 === "function") {
+      return step1(ctx, async () => {});
+    }
+    return;
+  }
   await ctx.reply("Enter the admin secret:");
   return ctx.wizard.next();
 };

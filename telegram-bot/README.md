@@ -19,13 +19,13 @@ Both paths reply with the job ID and notify all subscribers. The notification id
 | `/help` | List commands | — |
 | `/register` | Register your account (sets `isApproved: false`; an admin must approve before you can submit requests) | — |
 | `/request` | Prompted flow: submit a `package.json` (file or pasted text) or an npmjs.com URL to queue a download job | Registered + approved |
-| `/subscribe` | Subscribe to job notifications | `APPROVE_SECRET` |
-| `/unsubscribe` | Unsubscribe from job notifications | `APPROVE_SECRET` |
-| `/approve_client` | Approve a registered client by Telegram ID or username | `APPROVE_SECRET` |
-| `/notify_client` | Mark one of the last 5 pending jobs as success or failed and notify the original requestor | `APPROVE_SECRET` |
+| `/subscribe` | Subscribe to job notifications | Admin |
+| `/unsubscribe` | Unsubscribe from job notifications | Admin |
+| `/approve_client` | Approve a registered client by Telegram ID or username | Admin |
+| `/notify_client` | Mark one of the last 5 pending jobs as success or failed and notify the original requestor | Admin |
 | `/cancel` | Cancel the current active conversation | — |
 
-Commands marked **`APPROVE_SECRET`** start a 2-step conversation: the bot first asks for the admin secret, then performs the action only if it matches.
+Commands marked **Admin** are gated by the `APPROVE_SECRET`. On first use, the bot prompts for the secret; on a match, it grants permanent admin status (`isAdmin: true`), auto-subscribes the admin to job notifications, and proceeds. On all subsequent uses, the secret prompt is skipped — the bot goes straight to the admin action. If the user is not yet registered, they are automatically registered and approved when the secret is first matched.
 
 ## Environment variables
 
