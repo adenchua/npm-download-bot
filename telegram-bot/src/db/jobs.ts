@@ -19,18 +19,10 @@ function col() {
   return getDb().collection<Job>(COLLECTION);
 }
 
-export async function verifyIndexes(): Promise<void> {
-  const indexes = await col().indexes();
-  if (!indexes.some((idx) => idx.name === "job")) {
-    throw new Error(
-      'Required unique index "job" is missing on the jobs collection. Ensure the database was initialised correctly.',
-    );
-  }
-  if (!indexes.some((idx) => idx.name === "jobsByDate")) {
-    throw new Error(
-      'Required index "jobsByDate" is missing on the jobs collection. Ensure the database was initialised correctly.',
-    );
-  }
+export async function ensureIndexes(): Promise<void> {
+  await col().createIndex({ jobId: 1 }, { unique: true, name: "job" });
+  await col().createIndex({ clientId: 1 }, { name: "jobsByClient" });
+  await col().createIndex({ startedAt: -1 }, { name: "jobsByDate" });
 }
 
 export async function addJob(data: Job): Promise<void> {

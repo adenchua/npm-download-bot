@@ -1,9 +1,9 @@
 import { Telegraf, Scenes, session } from "telegraf";
 
 import { connectDb, closeDb } from "./db";
-import { getClientByTelegramId, verifyIndexes as verifyClientIndexes } from "./db/clients";
-import { verifyIndexes as verifySubscriberIndexes } from "./db/subscribers";
-import { verifyIndexes as verifyJobIndexes } from "./db/jobs";
+import { getClientByTelegramId, ensureIndexes as ensureClientIndexes } from "./db/clients";
+import { ensureIndexes as ensureSubscriberIndexes } from "./db/subscribers";
+import { ensureIndexes as ensureJobIndexes } from "./db/jobs";
 import { registerCommand } from "./commands/register";
 import { approveClientScene, APPROVE_SCENE_ID } from "./commands/approveClient";
 import { notifyClientScene, NOTIFY_CLIENT_SCENE_ID } from "./commands/notifyClient";
@@ -118,9 +118,9 @@ async function main() {
     throw new Error("NPM_DOWNLOAD_SERVICE_URL is not set");
   }
   await connectDb();
-  await verifyClientIndexes();
-  await verifySubscriberIndexes();
-  await verifyJobIndexes();
+  await ensureClientIndexes();
+  await ensureSubscriberIndexes();
+  await ensureJobIndexes();
   bot.launch();
   console.log("Telegram bot is running");
 }

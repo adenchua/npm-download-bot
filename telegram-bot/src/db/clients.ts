@@ -19,14 +19,8 @@ function col() {
   return getDb().collection<Client>(COLLECTION);
 }
 
-export async function verifyIndexes(): Promise<void> {
-  const indexes = await col().indexes();
-  const hasClientIndex = indexes.some((idx) => idx.name === "client");
-  if (!hasClientIndex) {
-    throw new Error(
-      'Required unique index "client" is missing on the clients collection. Ensure the database was initialised correctly.',
-    );
-  }
+export async function ensureIndexes(): Promise<void> {
+  await col().createIndex({ telegramId: 1 }, { unique: true, name: "client" });
 }
 
 export async function registerClient(data: Client): Promise<boolean> {

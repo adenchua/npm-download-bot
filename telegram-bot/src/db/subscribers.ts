@@ -16,13 +16,8 @@ function col() {
   return getDb().collection<Subscriber>(COLLECTION);
 }
 
-export async function verifyIndexes(): Promise<void> {
-  const indexes = await col().indexes();
-  if (!indexes.some((idx) => idx.name === "subscriber")) {
-    throw new Error(
-      'Required unique index "subscriber" is missing on the subscribers collection. Ensure the database was initialised correctly.',
-    );
-  }
+export async function ensureIndexes(): Promise<void> {
+  await col().createIndex({ telegramId: 1 }, { unique: true, name: "subscriber" });
 }
 
 // Returns true if newly subscribed, false if already existed.
