@@ -57,7 +57,7 @@ export const notifyClientScene = new Scenes.WizardScene<BotContext>(
     if (text === null) return;
     if (!(await checkSecret(ctx, text))) return;
 
-    const pendingJobs = await getPendingJobs(5);
+    const pendingJobs = await getPendingJobs(5, 7);
     if (pendingJobs.length === 0) {
       await ctx.reply("No pending jobs.");
       return ctx.scene.leave();

@@ -29,9 +29,13 @@ export async function addJob(data: Job): Promise<void> {
   await col().insertOne(data);
 }
 
-export async function getPendingJobs(limit: number): Promise<JobDocument[]> {
+export async function getPendingJobs(limit: number, maxAgeDays?: number): Promise<JobDocument[]> {
+  const filter: Record<string, unknown> = { status: { $exists: false } };
+  if (maxAgeDays !== undefined) {
+    filter.startedAt = { $gte: new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000) };
+  }
   return col()
-    .find({ status: { $exists: false } })
+    .find(filter)
     .sort({ startedAt: -1 })
     .limit(limit)
     .toArray();
