@@ -5,6 +5,7 @@ import { readdirSync, statSync, writeFileSync } from "fs";
 import { basename, join, resolve } from "path";
 
 import { DockerPayload } from "../types";
+import { ALLOWED_PLATFORMS, MAX_IMAGES, validateImageName } from "../resolver";
 
 export const filesRouter = Router();
 
@@ -23,11 +24,22 @@ filesRouter.post("/upload", async (req: Request, res: Response) => {
     return;
   }
 
+  if (body.images.length > MAX_IMAGES) {
+    res.status(422).json({ error: `Too many images: ${body.images.length} (max ${MAX_IMAGES})` });
+    return;
+  }
+
   for (const image of body.images) {
-    if (typeof image !== "string") {
-      res.status(422).json({ error: "All entries in \"images\" must be strings" });
+    if (typeof image !== "string" || !validateImageName(image)) {
+      res.status(422).json({ error: `Invalid image name: "${image}"` });
       return;
     }
+  }
+
+  const platform = typeof body.platform === "string" ? body.platform : "linux/amd64";
+  if (!ALLOWED_PLATFORMS.has(platform)) {
+    res.status(422).json({ error: `Unsupported platform: "${platform}". Allowed: ${[...ALLOWED_PLATFORMS].join(", ")}` });
+    return;
   }
 
   const datePrefix = format(new Date(), "yyyyMMdd");
@@ -36,7 +48,7 @@ filesRouter.post("/upload", async (req: Request, res: Response) => {
 
   const sanitized: DockerPayload = {
     images: body.images,
-    platform: typeof body.platform === "string" ? body.platform : "linux/amd64",
+    platform,
   };
   writeFileSync(join(INPUT_DIR, `${id}.json`), JSON.stringify(sanitized, null, 2));
 

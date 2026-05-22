@@ -1,11 +1,23 @@
 import { DockerPayload, ResolvedImage } from "./types";
 
 const DEFAULT_PLATFORM = "linux/amd64";
+export const MAX_IMAGES = 20;
 
 // Docker image names: optional org/name, lowercase alphanum + ._-, optional :tag
 const DOCKER_IMAGE_REGEX = /^[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*(?::[a-zA-Z0-9][a-zA-Z0-9._+\-]*)?$/;
 
-function validateImageName(image: string): boolean {
+export const ALLOWED_PLATFORMS = new Set([
+  "linux/amd64",
+  "linux/arm64",
+  "linux/arm/v6",
+  "linux/arm/v7",
+  "linux/386",
+  "linux/ppc64le",
+  "linux/s390x",
+  "windows/amd64",
+]);
+
+export function validateImageName(image: string): boolean {
   return image.length <= 128 && DOCKER_IMAGE_REGEX.test(image);
 }
 
@@ -26,6 +38,12 @@ export interface ResolverResult {
 
 export function resolveImages(payload: DockerPayload): ResolverResult {
   const platform = payload.platform ?? DEFAULT_PLATFORM;
+  if (!ALLOWED_PLATFORMS.has(platform)) {
+    throw new Error(`Unsupported platform: "${platform}". Allowed: ${[...ALLOWED_PLATFORMS].join(", ")}`);
+  }
+  if (payload.images.length > MAX_IMAGES) {
+    throw new Error(`Too many images: ${payload.images.length} (max ${MAX_IMAGES})`);
+  }
   const seen = new Set<string>();
   const images: ResolvedImage[] = [];
 

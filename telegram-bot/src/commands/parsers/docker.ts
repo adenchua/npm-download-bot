@@ -1,6 +1,19 @@
 // Docker image name: optional org/name prefix, lowercase alphanum + ._-, optional :tag
 const DOCKER_IMAGE_REGEX = /^[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*(?::[a-zA-Z0-9][a-zA-Z0-9._+\-]*)?$/;
 
+const ALLOWED_PLATFORMS = new Set([
+  "linux/amd64",
+  "linux/arm64",
+  "linux/arm/v6",
+  "linux/arm/v7",
+  "linux/386",
+  "linux/ppc64le",
+  "linux/s390x",
+  "windows/amd64",
+]);
+
+export const MAX_DOCKER_IMAGES = 20;
+
 // hub.docker.com/_/<image> — official library images
 const DOCKER_HUB_OFFICIAL_REGEX = /^https?:\/\/(?:www\.)?hub\.docker\.com\/_\/([a-z0-9][a-z0-9._-]*)(?:\/.*)?$/;
 // hub.docker.com/r/<org>/<name> — user/org images
@@ -24,10 +37,12 @@ export function parseDockerJson(text: string): { images: string[]; platform: str
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
   const obj = parsed as Record<string, unknown>;
   if (!Array.isArray(obj.images) || obj.images.length === 0) return null;
+  if (obj.images.length > MAX_DOCKER_IMAGES) return null;
   for (const image of obj.images) {
     if (typeof image !== "string" || !validateDockerImageName(image)) return null;
   }
   const platform = typeof obj.platform === "string" ? obj.platform : "linux/amd64";
+  if (!ALLOWED_PLATFORMS.has(platform)) return null;
   return { images: obj.images as string[], platform };
 }
 

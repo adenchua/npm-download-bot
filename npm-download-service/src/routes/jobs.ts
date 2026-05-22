@@ -18,6 +18,11 @@ jobsRouter.post("/", async (req: Request, res: Response) => {
     return;
   }
 
+  if (!/^\d{8}-\d{4}-\d+$/.test(id)) {
+    res.status(400).json({ error: "Invalid id format" });
+    return;
+  }
+
   const inputPath = join(INPUT_DIR, `${id}.json`);
   if (!existsSync(inputPath)) {
     res.status(404).json({ error: `No uploaded file found for id: ${id}` });

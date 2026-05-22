@@ -66,9 +66,13 @@ Only the fields `name`, `version`, `dependencies`, `devDependencies`, and `peerD
 | Body is not a JSON object | `400` | `"Request body must be a JSON object"` |
 | None of the three dep fields are present | `422` | `"package.json must contain at least one of: dependencies, devDependencies, peerDependencies"` |
 | A dep field is not an object | `422` | `"\"<field>\" must be an object"` |
+| A dep field has more than 500 entries | `422` | `"Too many entries in \"<field>\": N (max 500)"` |
+| A dep field key is not a valid npm package name | `422` | `"Invalid package name in \"<field>\": \"<name>\""` |
 | A dep field contains a non-string value | `422` | `"All values in \"<field>\" must be strings"` |
 
 The request body is capped at 100 KB by the HTTP server.
+
+`POST /jobs` additionally validates that `id` matches the format `YYYYMMDD-HHmm-N` before constructing the input file path.
 
 ## Output format
 

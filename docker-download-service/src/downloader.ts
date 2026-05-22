@@ -10,6 +10,8 @@ import { ResolvedImage, AuditSeverityCounts, DockerMetadata, ImageMetadata } fro
 
 const execFileAsync = promisify(execFile);
 
+const TRIVY_IMAGE = `aquasec/trivy:${process.env.TRIVY_VERSION ?? "latest"}`;
+
 // Naming: "latest" tag gets a short digest suffix; all other tags use tag only.
 // Slashes in image names are replaced with dashes (e.g. bitnami/nginx → bitnami-nginx).
 function tarballName(name: string, tag: string, shortDigest?: string): string {
@@ -72,8 +74,7 @@ async function runTrivyScan(imageRef: string): Promise<AuditSeverityCounts> {
       "/var/run/docker.sock:/var/run/docker.sock",
       "-v",
       "trivy-cache:/root/.cache/trivy",
-      "aquasec/trivy:latest",
-      "image",
+      TRIVY_IMAGE,      "image",
       "--format",
       "json",
       "--quiet",

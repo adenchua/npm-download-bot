@@ -52,11 +52,17 @@ Image names follow standard Docker naming rules: lowercase alphanumeric plus `._
 
 ### Validation
 
-| Condition                            | Status | Error                                            |
-| ------------------------------------ | ------ | ------------------------------------------------ |
-| Body is not a JSON object            | `400`  | `"Request body must be a JSON object"`           |
-| `images` is missing or empty         | `422`  | `'Body must contain a non-empty "images" array'` |
-| An entry in `images` is not a string | `422`  | `'All entries in "images" must be strings'`      |
+| Condition                              | Status | Error                                                           |
+| -------------------------------------- | ------ | --------------------------------------------------------------- |
+| Body is not a JSON object              | `400`  | `"Request body must be a JSON object"`                          |
+| `images` is missing or empty           | `422`  | `'Body must contain a non-empty "images" array'`                |
+| `images` has more than 20 entries      | `422`  | `"Too many images: N (max 20)"`                                 |
+| An entry in `images` is not a valid image name | `422` | `"Invalid image name: \"<name>\""`                    |
+| `platform` is not a supported value    | `422`  | `"Unsupported platform: \"<value>\". Allowed: linux/amd64, …"` |
+
+Supported platform values: `linux/amd64`, `linux/arm64`, `linux/arm/v6`, `linux/arm/v7`, `linux/386`, `linux/ppc64le`, `linux/s390x`, `windows/amd64`.
+
+`POST /jobs` additionally validates that `id` matches the format `YYYYMMDD-HHmm-N` before constructing the input file path.
 
 ## Output format
 
@@ -105,7 +111,7 @@ When `latest` resolves to a concrete version, the saved image is re-tagged to th
 
 When `latest` cannot be resolved (label absent), the entry falls back to `"version": "latest"` with a `"digest"` field: `{ "name": "nginx", "version": "latest", "tarball": "nginx-latest-a5de3e7a.tar", "digest": "sha256:a5de3e7a" }`.
 
-Vulnerability counts come from [Trivy](https://github.com/aquasecurity/trivy), run as an ephemeral `aquasec/trivy:latest` container at scan time. The vulnerability database is cached in a named Docker volume (`trivy-cache`) and refreshed automatically when the cached copy is older than 1 hour.
+Vulnerability counts come from [Trivy](https://github.com/aquasecurity/trivy), run as an ephemeral `aquasec/trivy` container at scan time. The version tag is controlled by the `TRIVY_VERSION` env var (default: `latest`); set it to a specific version (e.g. `0.62.0`) in `.env` for reproducible scans. The vulnerability database is cached in a named Docker volume (`trivy-cache`) and refreshed automatically when the cached copy is older than 1 hour.
 
 ## Local development
 
@@ -116,7 +122,7 @@ npm start       # starts on SERVER_PORT (default 3000)
 
 Requires a `.env` file — copy `.env.template` and set `SERVER_PORT` if needed.
 
-**Important:** `docker pull`, `docker save`, `docker inspect`, and the Trivy scan (run as an ephemeral `aquasec/trivy:latest` container) all require a Docker daemon to be accessible. When running locally, the host Docker daemon is used automatically. When running inside a container, `/var/run/docker.sock` must be mounted (see `docker-compose.yml`).
+**Important:** `docker pull`, `docker save`, `docker inspect`, and the Trivy scan (run as an ephemeral `aquasec/trivy` container) all require a Docker daemon to be accessible. When running locally, the host Docker daemon is used automatically. When running inside a container, `/var/run/docker.sock` must be mounted (see `docker-compose.yml`).
 
 ## Scripts
 
@@ -134,6 +140,6 @@ Requires a `.env` file — copy `.env.template` and set `SERVER_PORT` if needed.
 4. **Pull** — `docker pull --platform <platform> <image>:<tag>` is run concurrently for all images via `Promise.allSettled` (partial success — failed images are recorded but don't abort the job)
 5. **Resolve latest** — for `latest`-tagged images, `docker inspect` reads the `org.opencontainers.image.version` OCI label; if present, the image is re-tagged to that version (e.g. `nginx:1.27.5`) and saved under the concrete tag. If the label is absent, the repo digest is used as a filename suffix instead (`nginx-latest-a5de3e7a.tar`)
 6. **Save** — `docker save <image>:<tag> -o <filename>.tar` writes each image to a `.tar` file
-7. **Scan** — `docker run --rm aquasec/trivy:latest image --format json --cache-ttl 1h <image>:<tag>` scans each pulled image for vulnerabilities via an ephemeral Trivy container; severity counts are aggregated into `metadata.json`. The vulnerability database is cached in the `trivy-cache` named volume (refreshed when older than 1 hour)
+7. **Scan** — `docker run --rm aquasec/trivy:<TRIVY_VERSION> image --format json --cache-ttl 1h <image>:<tag>` scans each pulled image for vulnerabilities via an ephemeral Trivy container; severity counts are aggregated into `metadata.json`. The vulnerability database is cached in the `trivy-cache` named volume (refreshed when older than 1 hour)
 8. **Cleanup** — `docker rmi <image>:<tag>` removes the pulled image from the Docker daemon to avoid filling host storage
 9. **Package** — all `.tar` files and `metadata.json` are bundled into `output/<id>.tgz` via `archiver`, then the individual `.tar` files are deleted
