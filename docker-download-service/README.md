@@ -65,7 +65,7 @@ Each `output/<id>.tgz` contains one `.tar` file per successfully pulled image, p
 ```
 <id>.tgz
 ├── metadata.json
-├── nginx-latest-a5de3e7a.tar    ← "latest" tags get a short digest suffix
+├── nginx-1.27.5.tar             ← "latest" resolved to concrete version via OCI label
 ├── redis-7.tar                  ← pinned tags use tag only
 └── bitnami-postgresql-16.tar
 ```
@@ -73,16 +73,19 @@ Each `output/<id>.tgz` contains one `.tar` file per successfully pulled image, p
 The `.tar` files are produced by `docker save` and can be loaded on the target machine with:
 
 ```bash
-docker load -i nginx-latest-a5de3e7a.tar
+docker load -i nginx-1.27.5.tar
 ```
 
 ### Tarball naming
 
-| Tag              | Example filename                                                                            |
-| ---------------- | ------------------------------------------------------------------------------------------- |
-| `latest`         | `nginx-latest-<8-char sha256>.tar` — digest disambiguates pulls at different points in time |
-| Any other tag    | `nginx-1.25.tar` — pinned tags are stable so no digest is needed                            |
-| Namespaced image | `bitnami-postgresql-16.tar` — `/` replaced with `-`                                         |
+| Tag                              | Example filename                                                                              |
+| -------------------------------- | --------------------------------------------------------------------------------------------- |
+| `latest` (version label present) | `nginx-1.27.5.tar` — resolved to the concrete version via `org.opencontainers.image.version` |
+| `latest` (label absent)          | `nginx-latest-<8-char sha256>.tar` — digest disambiguates pulls at different points in time   |
+| Any other tag                    | `nginx-1.25.tar` — pinned tags are stable so no digest is needed                             |
+| Namespaced image                 | `bitnami-postgresql-16.tar` — `/` replaced with `-`                                          |
+
+When `latest` resolves to a concrete version, the saved image is re-tagged to that version before saving. Loading the archive on the target machine gives you the properly versioned tag (e.g. `nginx:1.27.5`) rather than `nginx:latest`.
 
 ### metadata.json
 
@@ -93,12 +96,14 @@ docker load -i nginx-latest-a5de3e7a.tar
   "summary": { "total": 3, "succeeded": 3, "failed": 0 },
   "audit": { "critical": 0, "high": 2, "medium": 5, "low": 12, "unknown": 0 },
   "packages": [
-    { "name": "nginx", "version": "latest", "tarball": "nginx-latest-a5de3e7a.tar", "digest": "sha256:a5de3e7a" },
+    { "name": "nginx", "version": "1.27.5", "tarball": "nginx-1.27.5.tar" },
     { "name": "redis", "version": "7", "tarball": "redis-7.tar" }
   ],
   "failedPackages": [{ "name": "some-private-image", "version": "latest", "error": "pull access denied" }]
 }
 ```
+
+When `latest` cannot be resolved (label absent), the entry falls back to `"version": "latest"` with a `"digest"` field: `{ "name": "nginx", "version": "latest", "tarball": "nginx-latest-a5de3e7a.tar", "digest": "sha256:a5de3e7a" }`.
 
 Vulnerability counts come from [Trivy](https://github.com/aquasecurity/trivy), run as an ephemeral `aquasec/trivy:latest` container at scan time. The vulnerability database is cached in a named Docker volume (`trivy-cache`) and refreshed automatically when the cached copy is older than 1 hour.
 
@@ -127,7 +132,7 @@ Requires a `.env` file — copy `.env.template` and set `SERVER_PORT` if needed.
 2. **Trigger** — `POST /jobs` starts a background job for that ID; responds 202 immediately
 3. **Resolve** — `resolver.ts` validates each image name (rejects shell metacharacters), deduplicates by `name:tag`, and returns the normalised list
 4. **Pull** — `docker pull --platform <platform> <image>:<tag>` is run concurrently for all images via `Promise.allSettled` (partial success — failed images are recorded but don't abort the job)
-5. **Digest** — for `latest`-tagged images, `docker inspect` retrieves the repo digest so the tarball filename encodes which specific version was pulled
+5. **Resolve latest** — for `latest`-tagged images, `docker inspect` reads the `org.opencontainers.image.version` OCI label; if present, the image is re-tagged to that version (e.g. `nginx:1.27.5`) and saved under the concrete tag. If the label is absent, the repo digest is used as a filename suffix instead (`nginx-latest-a5de3e7a.tar`)
 6. **Save** — `docker save <image>:<tag> -o <filename>.tar` writes each image to a `.tar` file
 7. **Scan** — `docker run --rm aquasec/trivy:latest image --format json --cache-ttl 1h <image>:<tag>` scans each pulled image for vulnerabilities via an ephemeral Trivy container; severity counts are aggregated into `metadata.json`. The vulnerability database is cached in the `trivy-cache` named volume (refreshed when older than 1 hour)
 8. **Cleanup** — `docker rmi <image>:<tag>` removes the pulled image from the Docker daemon to avoid filling host storage

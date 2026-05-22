@@ -20,6 +20,23 @@ function tarballName(name: string, tag: string, shortDigest?: string): string {
   return `${safeName}-${tag}.tar`;
 }
 
+// Reads org.opencontainers.image.version label from a pulled image.
+// Returns the trimmed version string, or undefined if absent or on any error.
+async function getResolvedTag(imageRef: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFileAsync("docker", [
+      "inspect",
+      imageRef,
+      "--format",
+      '{{index .Config.Labels "org.opencontainers.image.version"}}',
+    ]);
+    const version = stdout.trim();
+    return version.length > 0 ? version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // Returns the first 8 hex chars of the sha256 digest for an image, used to
 // make "latest"-tagged filenames unique across pulls at different points in time.
 async function getShortDigest(image: ResolvedImage): Promise<string | undefined> {
@@ -109,6 +126,27 @@ async function pullAndSave(image: ResolvedImage, outputDir: string): Promise<Pul
   const ref = `${image.name}:${image.tag}`;
 
   await execFileAsync("docker", ["pull", "--platform", image.platform, ref]);
+
+  // For latest-tagged images, try to resolve to the concrete version via OCI label.
+  if (image.tag === "latest") {
+    const resolvedTag = await getResolvedTag(ref);
+    if (resolvedTag) {
+      const resolvedRef = `${image.name}:${resolvedTag}`;
+      await execFileAsync("docker", ["tag", ref, resolvedRef]);
+      const filename = tarballName(image.name, resolvedTag);
+      const tarPath = join(outputDir, filename);
+      await execFileAsync("docker", ["save", resolvedRef, "-o", tarPath]);
+      const audit = await runTrivyScan(resolvedRef);
+      await execFileAsync("docker", ["rmi", ref, resolvedRef]).catch(() => {});
+      return {
+        status: "fulfilled",
+        metadata: { name: image.name, version: resolvedTag, tarball: filename },
+        tarPath,
+        audit,
+      };
+    }
+    // Label absent — fall through to existing latest+digest behaviour
+  }
 
   let shortDigest: string | undefined;
   if (image.tag === "latest") {
