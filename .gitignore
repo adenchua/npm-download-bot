@@ -48,6 +48,10 @@ jspm_packages/
 npm-download-service/input/
 npm-download-service/output/
 
+# docker-download-service I/O directories
+docker-download-service/input/
+docker-download-service/output/
+
 # macOS artifacts
 .DS_Store
 .AppleDouble
