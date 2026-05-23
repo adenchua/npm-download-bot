@@ -51,21 +51,21 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # telegram-bot:
-  #   build: ./telegram-bot
-  #   env_file: ./telegram-bot/.env
-  #   depends_on:
-  #     mongodb:
-  #       condition: service_healthy
-  #     npm-download-service:
-  #       condition: service_healthy
-  #     docker-download-service:
-  #       condition: service_healthy
-  #   environment:
-  #     TZ: Asia/Singapore
-  #     NPM_DOWNLOAD_SERVICE_URL: http://npm-download-service:3000
-  #     DOCKER_DOWNLOAD_SERVICE_URL: http://docker-download-service:3001
-  #   restart: unless-stopped
+  telegram-bot:
+    build: ./telegram-bot
+    env_file: ./telegram-bot/.env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      npm-download-service:
+        condition: service_healthy
+      docker-download-service:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Singapore
+      NPM_DOWNLOAD_SERVICE_URL: http://npm-download-service:3000
+      DOCKER_DOWNLOAD_SERVICE_URL: http://docker-download-service:3001
+    restart: unless-stopped
 
   mongo-express:
     image: mongo-express:1
