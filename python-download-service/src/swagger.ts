@@ -156,7 +156,8 @@ export const swaggerDocument = {
           platforms: {
             type: "array",
             items: { type: "string" },
-            description: "Target platforms. Defaults to linux_x86_64 and win_amd64 when omitted.",
+            description:
+              "Target platforms. Defaults to linux_x86_64 and win_amd64 when omitted. linux_x86_64 and linux_aarch64 are friendly aliases that resolve to manylinux_2_17_x86_64 and manylinux_2_17_aarch64 respectively. Use explicit manylinux_2_28_* tags to target newer glibc systems.",
             example: ["linux_x86_64", "win_amd64"],
           },
           pythonVersions: {

@@ -1,8 +1,17 @@
 import { DownloadTarget, PythonPayload } from "./types";
 
+export const PLATFORM_ALIASES: Record<string, string> = {
+  linux_x86_64: "manylinux_2_17_x86_64",
+  linux_aarch64: "manylinux_2_17_aarch64",
+};
+
 export const ALLOWED_PLATFORMS = [
   "linux_x86_64",
   "linux_aarch64",
+  "manylinux_2_17_x86_64",
+  "manylinux_2_17_aarch64",
+  "manylinux_2_28_x86_64",
+  "manylinux_2_28_aarch64",
   "win_amd64",
   "win32",
   "macosx_14_0_arm64",
@@ -97,8 +106,9 @@ export function resolveTargets(payload: PythonPayload): DownloadTarget[] {
 
   const targets: DownloadTarget[] = [];
   for (const platform of platforms) {
+    const resolvedPlatform = PLATFORM_ALIASES[platform] ?? platform;
     for (const pythonVersion of pythonVersions) {
-      targets.push({ platform, pythonVersion });
+      targets.push({ platform: resolvedPlatform, pythonVersion });
     }
   }
   return targets;

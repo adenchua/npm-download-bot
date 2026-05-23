@@ -105,8 +105,11 @@ export async function downloadAndBundle(id: string, payload: PythonPayload): Pro
         succeededTargets++;
         logger.log(`  ✓ ${target.platform} / Python ${target.pythonVersion}`);
       } else {
-        const rawMessage =
-          result.reason instanceof Error ? result.reason.message.split("\n")[0] : String(result.reason);
+        const err = result.reason;
+        const stderr = err instanceof Error && "stderr" in err ? String((err as NodeJS.ErrnoException & { stderr: string }).stderr) : "";
+        const errorLines = stderr.split("\n").filter((line) => line.startsWith("ERROR:"));
+        const pipError = errorLines[errorLines.length - 1] ?? "";
+        const rawMessage = pipError || (err instanceof Error ? err.message.split("\n")[0] : String(err));
         const errorMessage = rawMessage.replace(/\/[^\s,]+|[A-Z]:\\[^\s,]+/g, "<path>").slice(0, 200);
         failedTargets.push({ platform: target.platform, pythonVersion: target.pythonVersion, error: errorMessage });
         logger.error(`  ✗ ${target.platform} / Python ${target.pythonVersion} — ${errorMessage}`);
