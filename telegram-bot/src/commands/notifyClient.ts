@@ -12,6 +12,7 @@ import {
   CALLBACK_PREFIXES,
   SECRET_PROMPT_STEP,
 } from "./helpers";
+import { logger } from "../logger";
 
 export const NOTIFY_CLIENT_SCENE_ID = "notify_client";
 
@@ -41,7 +42,7 @@ async function sendJobOutcomeToClient(
     await ctx.telegram.sendMessage(client.telegramId, clientMessage, { parse_mode: "Markdown" });
     return true;
   } catch (err) {
-    console.error(`Failed to notify client ${client.telegramId}:`, err);
+    logger.error(`Failed to notify client ${client.telegramId}:`, err);
     return false;
   }
 }

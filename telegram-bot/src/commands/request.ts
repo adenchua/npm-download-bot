@@ -6,6 +6,7 @@ import { getAllSubscribers } from "../db/subscribers";
 import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES } from "./helpers";
 import { parseAndValidatePackageJson, parseNpmUrl } from "./parsers/npm";
 import { parseDockerJson, parseDockerHubUrl } from "./parsers/docker";
+import { logger } from "../logger";
 
 export const REQUEST_SCENE_ID = "request";
 
@@ -63,7 +64,7 @@ async function submitJob(
     if (!uploadRes.ok) throw new Error(`HTTP ${uploadRes.status}`);
     ({ id } = (await uploadRes.json()) as { id: string });
   } catch (err) {
-    console.error("Upload error:", err);
+    logger.error("Upload error:", err);
     await ctx.reply("Failed to upload request. Please try again later.");
     return;
   }
@@ -73,7 +74,7 @@ async function submitJob(
     try {
       await addJob({ clientId: client._id, jobId: id, startedAt: new Date(), serviceType });
     } catch (err) {
-      console.error("Job record error:", err);
+      logger.error("Job record error:", err);
     }
   }
 
@@ -84,7 +85,7 @@ async function submitJob(
       body: JSON.stringify({ id }),
     });
   } catch (err) {
-    console.error("Job start error:", err);
+    logger.error("Job start error:", err);
   }
 
   await ctx.reply(`Job started! Your download ID is:\n\`${id}\``, { parse_mode: "Markdown" });

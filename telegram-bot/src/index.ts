@@ -18,6 +18,7 @@ import {
 import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES } from "./commands/helpers";
 import { parseAndValidatePackageJson, parseNpmUrl } from "./commands/parsers/npm";
 import { parseDockerJson, parseDockerHubUrl } from "./commands/parsers/docker";
+import { logger } from "./logger";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -149,7 +150,7 @@ async function main() {
   await ensureSubscriberIndexes();
   await ensureJobIndexes();
   bot.launch();
-  console.log("Telegram bot is running");
+  logger.log("Telegram bot is running");
 }
 
 async function shutdown(signal: string) {

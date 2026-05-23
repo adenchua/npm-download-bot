@@ -8,6 +8,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 
 import { AuditReport, PackageMetadata, ResolvedPackage } from "./types";
+import { logger } from "./logger";
 
 const execFileAsync = promisify(execFile);
 
@@ -38,7 +39,7 @@ export async function downloadAndZip(packages: ResolvedPackage[], id: string, au
           maxBuffer: 1024 * 1024 * 1024,
         });
         const tarball = tarballName(pkg.name, pkg.version);
-        console.log(`  ✓ ${ref}`);
+        logger.log(`  ✓ ${ref}`);
         return { name: pkg.name, version: pkg.version, tarball };
       }),
     );
@@ -51,13 +52,13 @@ export async function downloadAndZip(packages: ResolvedPackage[], id: string, au
         succeeded++;
       } else {
         const message = result.reason instanceof Error ? result.reason.message.split("\n")[0] : String(result.reason);
-        console.error(`  ✗ Failed: ${pkg.name}@${pkg.version} — ${message}`);
+        logger.error(`  ✗ Failed: ${pkg.name}@${pkg.version} — ${message}`);
         failedPackages.push({ name: pkg.name, version: pkg.version, error: message });
         failed++;
       }
     }
 
-    console.log(`\nDownloaded ${succeeded}/${packages.length} packages (${failed} failed)`);
+    logger.log(`\nDownloaded ${succeeded}/${packages.length} packages (${failed} failed)`);
 
     const metadata: PackageMetadata = {
       startedAt,
@@ -74,7 +75,7 @@ export async function downloadAndZip(packages: ResolvedPackage[], id: string, au
 
     const tgzPath = join(outputDir, `${id}.tgz`);
     await createTgz(tmpDir, metadata, tgzPath);
-    console.log(`→ ${tgzPath}`);
+    logger.log(`→ ${tgzPath}`);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }

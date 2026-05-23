@@ -7,6 +7,7 @@ import { exec, execFile } from "child_process";
 import { promisify } from "util";
 
 import { AuditReport, AuditSeverityCounts, PackageJson, ResolvedPackage, ResolverResult } from "./types";
+import { logger } from "./logger";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -21,7 +22,7 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
   };
 
   if (parsed.peerDependencies) {
-    console.log("Resolving peer dependencies...");
+    logger.log("Resolving peer dependencies...");
     for (const [name, versionSpec] of Object.entries(parsed.peerDependencies)) {
       if (name in merged) continue;
 
@@ -30,9 +31,9 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
         const resolved = await resolveVersionRange(name, versionSpec);
         if (resolved) {
           merged[name] = resolved;
-          console.log(`  Resolved peer dep ${name}: "${versionSpec}" → ${resolved}`);
+          logger.log(`  Resolved peer dep ${name}: "${versionSpec}" → ${resolved}`);
         } else {
-          console.warn(`  Could not resolve peer dep ${name}@${versionSpec} — skipping`);
+          logger.warn(`  Could not resolve peer dep ${name}@${versionSpec} — skipping`);
         }
       } else {
         merged[name] = versionSpec;
@@ -48,7 +49,7 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
       JSON.stringify({ name: "resolver-tmp", version: "1.0.0", dependencies: merged }, null, 2),
     );
 
-    console.log("Installing dependencies to resolve full tree...");
+    logger.log("Installing dependencies to resolve full tree...");
     await execAsync("npm install --ignore-scripts --no-audit --no-fund", { cwd: tmpDir });
 
     const seen = new Set<string>();
@@ -139,13 +140,13 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
 
     const passBAdded: ResolvedPackage[] = [];
     if (optionalPeerCandidates.size > 0) {
-      console.log(`Resolving ${optionalPeerCandidates.size} optional peer dep(s)...`);
+      logger.log(`Resolving ${optionalPeerCandidates.size} optional peer dep(s)...`);
       for (const [peerName, peerRange] of optionalPeerCandidates) {
         const resolvedVersion = await resolveVersionRange(peerName, peerRange);
         if (resolvedVersion) {
           if (addIfNew(peerName, resolvedVersion)) {
             passBAdded.push({ name: peerName, version: resolvedVersion });
-            console.log(`  Added optional peer dep: ${peerName}@${resolvedVersion}`);
+            logger.log(`  Added optional peer dep: ${peerName}@${resolvedVersion}`);
           }
         }
       }
@@ -155,7 +156,7 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
     // Not recursive — only processes pass (b) outputs. Catches platform-specific
     // packages (e.g. @esbuild/*) whose parent (esbuild) was never installed by npm.
     if (passBAdded.length > 0) {
-      console.log(`Resolving optional deps of ${passBAdded.length} optional peer dep(s)...`);
+      logger.log(`Resolving optional deps of ${passBAdded.length} optional peer dep(s)...`);
       for (const pkg of passBAdded) {
         try {
           const { stdout } = await execFileAsync(
@@ -168,12 +169,12 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
           for (const [depName, depVersion] of Object.entries(optDeps)) {
             if (semver.valid(depVersion)) {
               if (addIfNew(depName, depVersion)) {
-                console.log(`  Added optional dep of ${pkg.name}: ${depName}@${depVersion}`);
+                logger.log(`  Added optional dep of ${pkg.name}: ${depName}@${depVersion}`);
               }
             } else {
               const resolved = await resolveVersionRange(depName, depVersion);
               if (resolved && addIfNew(depName, resolved)) {
-                console.log(`  Added optional dep of ${pkg.name}: ${depName}@${resolved}`);
+                logger.log(`  Added optional dep of ${pkg.name}: ${depName}@${resolved}`);
               }
             }
           }
@@ -183,7 +184,7 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
       }
     }
 
-    console.log("Running vulnerability audit...");
+    logger.log("Running vulnerability audit...");
     const audit = await runAudit(tmpDir, results);
     return { packages: results, audit };
   } finally {
@@ -212,7 +213,7 @@ async function runAudit(cwd: string, resolvedPackages: ResolvedPackage[]): Promi
     // npm audit exits code 1 when vulnerabilities are found — stdout is still valid JSON
     const e = err as { stdout?: string };
     if (!e.stdout) {
-      console.warn("  npm audit failed to execute — skipping");
+      logger.warn("  npm audit failed to execute — skipping");
       return emptyAuditReport();
     }
     rawJson = e.stdout;
@@ -241,7 +242,7 @@ async function runAudit(cwd: string, resolvedPackages: ResolvedPackage[]): Promi
 
     return { severities, highPackages, criticalPackages };
   } catch {
-    console.warn("  Failed to parse npm audit output — skipping");
+    logger.warn("  Failed to parse npm audit output — skipping");
     return emptyAuditReport();
   }
 }

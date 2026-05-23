@@ -6,6 +6,7 @@ import { join, resolve } from "path";
 import { DockerPayload } from "../types";
 import { resolveImages } from "../resolver";
 import { downloadAndZip } from "../downloader";
+import { logger } from "../logger";
 
 export const jobsRouter = Router();
 
@@ -33,15 +34,15 @@ jobsRouter.post("/", async (req: Request, res: Response) => {
   res.status(202).json({ message: "Job started", id });
 
   runJob(id, inputPath).catch((err) => {
-    console.error(`[job:${id}] failed:`, err instanceof Error ? err.message : err);
+    logger.error(`[job:${id}] failed:`, err instanceof Error ? err.message : err);
   });
 });
 
 async function runJob(id: string, inputPath: string): Promise<void> {
   const payload = JSON.parse(readFileSync(inputPath, "utf8")) as DockerPayload;
-  console.log(`[job:${id}] resolving ${payload.images.length} image(s)…`);
+  logger.log(`[job:${id}] resolving ${payload.images.length} image(s)…`);
   const { images } = resolveImages(payload);
-  console.log(`[job:${id}] resolved ${images.length} image(s), starting pull…`);
+  logger.log(`[job:${id}] resolved ${images.length} image(s), starting pull…`);
   await downloadAndZip(images, id);
-  console.log(`[job:${id}] complete → output/${id}.tgz`);
+  logger.log(`[job:${id}] complete → output/${id}.tgz`);
 }

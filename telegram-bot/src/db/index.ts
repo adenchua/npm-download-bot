@@ -1,5 +1,7 @@
 import { MongoClient, Db } from "mongodb";
 
+import { logger } from "../logger";
+
 let client: MongoClient | null = null;
 let db: Db | null = null;
 
@@ -10,7 +12,7 @@ export async function connectDb(): Promise<void> {
   client = new MongoClient(uri);
   await client.connect();
   db = client.db(process.env.MONGODB_DB_NAME ?? "npm-download-bot");
-  console.log("Connected to MongoDB");
+  logger.log("Connected to MongoDB");
 }
 
 export function getDb(): Db {

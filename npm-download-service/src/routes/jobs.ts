@@ -5,6 +5,7 @@ import { join, resolve } from "path";
 
 import { resolveAllDependencies } from "../resolver";
 import { downloadAndZip } from "../downloader";
+import { logger } from "../logger";
 
 export const jobsRouter = Router();
 
@@ -32,14 +33,14 @@ jobsRouter.post("/", async (req: Request, res: Response) => {
   res.status(202).json({ message: "Job started", id });
 
   runJob(id, inputPath).catch((err) => {
-    console.error(`[job:${id}] failed:`, err instanceof Error ? err.message : err);
+    logger.error(`[job:${id}] failed:`, err instanceof Error ? err.message : err);
   });
 });
 
 async function runJob(id: string, inputPath: string): Promise<void> {
-  console.log(`[job:${id}] starting resolve…`);
+  logger.log(`[job:${id}] starting resolve…`);
   const { packages, audit } = await resolveAllDependencies(inputPath);
-  console.log(`[job:${id}] resolved ${packages.length} packages, starting pack…`);
+  logger.log(`[job:${id}] resolved ${packages.length} packages, starting pack…`);
   await downloadAndZip(packages, id, audit);
-  console.log(`[job:${id}] complete → output/${id}.tgz`);
+  logger.log(`[job:${id}] complete → output/${id}.tgz`);
 }

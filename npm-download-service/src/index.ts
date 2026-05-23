@@ -2,6 +2,7 @@ import { mkdirSync } from "fs";
 import { join } from "path";
 
 import { createApp } from "./app";
+import { logger } from "./logger";
 
 // Set cwd to the service root so path.resolve('input') and path.resolve('output')
 // in routes and downloader.ts always resolve correctly regardless of where the
@@ -16,5 +17,5 @@ const PORT = parseInt(process.env.SERVER_PORT ?? "3000", 10);
 const app = createApp();
 
 app.listen(PORT, () => {
-  console.log(`npm-download-service listening on port ${PORT}`);
+  logger.log(`npm-download-service listening on port ${PORT}`);
 });
