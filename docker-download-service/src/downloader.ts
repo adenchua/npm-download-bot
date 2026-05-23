@@ -194,11 +194,12 @@ async function runCopaPatch(imageRef: string, reportPath: string, patchedTag: st
     "[copa]",
   );
 
+  // Copa may exit non-zero OR exit 0 when there is nothing to patch; check both cases.
+  const combinedOutput = result.stdout + result.stderr;
+  const isNoop = /no.{0,30}(patches|vulnerab|updat)|already.{0,20}up.to.date/i.test(combinedOutput);
+
   if (result.exitCode !== 0) {
-    // Copa exits non-zero when the report has no patchable vulnerabilities.
-    if (/no.{0,30}(patches|vulnerab|updat)/i.test(result.stderr)) {
-      return { hardened: true, patchedPackageCount: 0 };
-    }
+    if (isNoop) return { hardened: true, patchedPackageCount: 0 };
 
     const reason =
       result.stderr
@@ -212,6 +213,10 @@ async function runCopaPatch(imageRef: string, reportPath: string, patchedTag: st
     logger.error(`[copa] hardening failed for ${imageRef}:`, result.stderr.trim());
     return { hardened: false, hardenReason: reason };
   }
+
+  // Copa exited 0 but may still have patched nothing (some versions exit 0 and never create
+  // the output tag when 0 packages are patchable — don't return patchedTag in that case).
+  if (isNoop) return { hardened: true, patchedPackageCount: 0 };
 
   return {
     hardened: true,
