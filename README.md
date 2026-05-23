@@ -1,9 +1,10 @@
-# npm-download-bot
+# development-download-bot
 
 A self-hosted system for downloading packages offline and managing user access via Telegram. Users submit package requests through the bot; the download services resolve and bundle everything into a single `.tgz` archive ready for transfer to an air-gapped environment.
 
 ## Architecture
 
+<!-- prettier-ignore -->
 | Service | Host port | Purpose |
 |---------|-----------|---------|
 | `npm-download-service` | 3000 | REST API — resolves transitive npm dependencies and packages them as `.tgz` archives |
@@ -30,6 +31,7 @@ cp docker-download-service/.env.template docker-download-service/.env
 cp python-download-service/.env.template python-download-service/.env
 ```
 
+<!-- prettier-ignore -->
 | File | Variables to fill in |
 |------|----------------------|
 | `database/.env` | `MONGO_INITDB_ROOT_USERNAME`, `MONGO_INITDB_ROOT_PASSWORD`, `ME_CONFIG_MONGODB_ADMINUSERNAME`, `ME_CONFIG_MONGODB_ADMINPASSWORD`, `ME_CONFIG_BASICAUTH_USERNAME`, `ME_CONFIG_BASICAUTH_PASSWORD` |
@@ -77,6 +79,7 @@ Users interact entirely through Telegram. The bot auto-detects input type — no
 
 **Supported inputs:**
 
+<!-- prettier-ignore -->
 | Input | Service |
 |-------|---------|
 | `package.json` file or pasted JSON with `dependencies` / `devDependencies` / `peerDependencies` | npm |
@@ -89,6 +92,7 @@ Users interact entirely through Telegram. The bot auto-detects input type — no
 
 **Commands:**
 
+<!-- prettier-ignore -->
 | Command | Description |
 |---------|-------------|
 | `/register` | Register your account |
@@ -103,17 +107,20 @@ Admin-only commands (require `APPROVE_SECRET`): `/approve_client`, `/notify_clie
 All services produce a `.tgz` archive in their `output/` directory, identified by the job ID (`yyyyMMdd-HHmm-N`).
 
 **npm** — `output/<id>.tgz` contains individual `.tgz` npm tarballs and `metadata.json`. Install offline with:
+
 ```bash
 npm install --prefer-offline --cache ./cache <package-name>
 # or unpack tarballs into a local registry
 ```
 
 **Docker** — `output/<id>.tgz` contains `.tar` Docker image archives and `metadata.json`. Load on the target machine with:
+
 ```bash
 docker load -i <image>.tar
 ```
 
 **Python** — `output/<id>.tgz` contains `.whl` wheel files for all requested platforms and Python versions, plus `metadata.json`. Install offline with:
+
 ```bash
 pip install --no-index --find-links . <package-name>
 ```
