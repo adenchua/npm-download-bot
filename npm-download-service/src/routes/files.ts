@@ -6,10 +6,13 @@ import { basename, join, resolve } from "path";
 
 import { PackageJson } from "../types";
 
+const MAX_DEPS_PER_FIELD = 500;
+const NPM_PACKAGE_NAME_REGEX = /^(?:@[a-z0-9-][a-z0-9-._]*\/)?[a-z0-9][a-z0-9-._]*$/;
+
 export const filesRouter = Router();
 
 // POST /upload — body is a package.json object
-filesRouter.post("/upload", async (req: Request, res: Response) => {
+filesRouter.post("/upload", (req: Request, res: Response) => {
   const INPUT_DIR = resolve("input");
   const body = req.body as PackageJson;
 
@@ -32,9 +35,20 @@ filesRouter.post("/upload", async (req: Request, res: Response) => {
       res.status(422).json({ error: `"${field}" must be an object` });
       return;
     }
-    if (Object.values(val).some((v) => typeof v !== "string")) {
-      res.status(422).json({ error: `All values in "${field}" must be strings` });
+    const entries = Object.entries(val);
+    if (entries.length > MAX_DEPS_PER_FIELD) {
+      res.status(422).json({ error: `Too many entries in "${field}": ${entries.length} (max ${MAX_DEPS_PER_FIELD})` });
       return;
+    }
+    for (const [pkgName, pkgVersion] of entries) {
+      if (!NPM_PACKAGE_NAME_REGEX.test(pkgName)) {
+        res.status(422).json({ error: `Invalid package name in "${field}": "${pkgName}"` });
+        return;
+      }
+      if (typeof pkgVersion !== "string") {
+        res.status(422).json({ error: `All values in "${field}" must be strings` });
+        return;
+      }
     }
   }
 
@@ -54,7 +68,7 @@ filesRouter.post("/upload", async (req: Request, res: Response) => {
 
 // GET /files — list all uploaded package.json files
 // Query params: showToday=true — only return files created today
-filesRouter.get("/files", async (req: Request, res: Response) => {
+filesRouter.get("/files", (req: Request, res: Response) => {
   const INPUT_DIR = resolve("input");
   const showToday = req.query.showToday === "true";
 

@@ -5,12 +5,14 @@
 | Directory | Role |
 |-----------|------|
 | `npm-download-service/` | HTTP service that resolves and bundles npm dependencies as offline `.tgz` archives |
+| `docker-download-service/` | HTTP service that pulls Docker images and bundles them as offline `.tgz` archives |
+| `python-download-service/` | HTTP service that downloads Python wheels for target platforms/versions and bundles them as offline `.tgz` archives |
 | `telegram-bot/` | Telegram bot for submitting download requests and managing user access |
 | `database/` | MongoDB schema definitions and init scripts |
 
 ## Development commands
 
-Both `npm-download-service` and `telegram-bot` share the same scripts (run from the relevant package directory):
+All four services (`npm-download-service`, `docker-download-service`, `python-download-service`, `telegram-bot`) share the same scripts (run from the relevant package directory):
 
 | Command | Description |
 |---------|-------------|
@@ -21,32 +23,37 @@ Both `npm-download-service` and `telegram-bot` share the same scripts (run from 
 
 ## Docker Compose
 
-Four services with explicit health-check dependencies:
+Six services with explicit health-check dependencies:
 
 ```
-npm-download-service  (health: GET /health)
-mongodb               (health: mongosh ping)   ← initialised by database/init/01-init.js on first run
-  └── telegram-bot    (depends on mongodb + npm-download-service, both healthy)
-  └── mongo-express   (depends on mongodb, healthy)
+npm-download-service    (health: GET /health)
+docker-download-service (health: GET /health)
+python-download-service (health: GET /health)
+mongodb                 (health: mongosh ping)   ← initialised by database/init/01-init.js on first run
+  └── telegram-bot      (depends on mongodb + npm-download-service + docker-download-service + python-download-service, all healthy)
+  └── mongo-express     (depends on mongodb, healthy)
 ```
 
 Volume mounts:
 - `npm-download-service/input/` and `output/` → `/app/input` and `/app/output`
+- `docker-download-service/input/` and `output/` → `/app/input` and `/app/output`
+- `python-download-service/input/` and `output/` → `/app/input` and `/app/output`
+- `/var/run/docker.sock` → `/var/run/docker.sock` (docker-download-service needs host Docker daemon access)
 - `database/data/` → `/data/db` (MongoDB persistence)
 - `database/init/` → `/docker-entrypoint-initdb.d/` (runs once on init)
 - `database/schemas/` → `/schemas/` (read by init script)
 
-`NPM_DOWNLOAD_SERVICE_URL` is injected directly via `environment:` in the compose file so the telegram-bot always resolves to `http://npm-download-service:3000` inside Docker, regardless of what is in `telegram-bot/.env`.
+`NPM_DOWNLOAD_SERVICE_URL`, `DOCKER_DOWNLOAD_SERVICE_URL`, and `PYTHON_DOWNLOAD_SERVICE_URL` are injected directly via `environment:` in the compose file so the telegram-bot always resolves to the correct internal hostnames, regardless of what is in `telegram-bot/.env`.
 
 ## npm-download-service source map
 
 | File | Role |
 |------|------|
 | `npm-download-service/src/index.ts` | HTTP server entry point; creates `input/` and `output/` dirs, starts Express on `SERVER_PORT` |
-| `npm-download-service/src/app.ts` | Express app factory; mounts `filesRouter`, `resolveRouter`, and `jobsRouter`; serves Swagger UI at `GET /docs` via `swagger-ui-express`; registers global `errorHandler` |
+| `npm-download-service/src/app.ts` | Express app factory; mounts `filesRouter`, `resolveRouter`, and `jobsRouter`; serves Swagger UI at `GET /docs` via `swagger-ui-express`; registers global `errorHandler`; sets explicit `express.json({ limit: "100kb" })` body size cap |
 | `npm-download-service/src/swagger.ts` | OpenAPI 3.1.0 document exported as `swaggerDocument`; defines all paths and reusable schemas in `components/schemas` |
-| `npm-download-service/src/routes/files.ts` | `POST /upload` and `GET /files` (with `?showToday` filter) |
-| `npm-download-service/src/routes/jobs.ts` | `POST /jobs` — fire-and-forget download job |
+| `npm-download-service/src/routes/files.ts` | `POST /upload` and `GET /files` (with `?showToday` filter); upload validates dep field keys against `NPM_PACKAGE_NAME_REGEX`, caps each field at `MAX_DEPS_PER_FIELD` (500 entries), and validates values are strings |
+| `npm-download-service/src/routes/jobs.ts` | `POST /jobs` — fire-and-forget download job; validates `id` matches `/^\d{8}-\d{4}-\d+$/` before using it in a path join |
 | `npm-download-service/src/middleware/errorHandler.ts` | Global Express error handler |
 | `npm-download-service/src/resolver.ts` | Creates a temp dir, merges `dependencies`/`devDependencies`/`peerDependencies`, runs `npm install` to materialise the full dependency tree, walks `node_modules`, then runs three passes to collect packages npm skipped: (a) lockfile scan for `optional: true` entries (platform-specific optional deps); (b) per-package `peerDependencies`+`peerDependenciesMeta` scan for optional peer deps npm v11 omits from the lockfile (e.g. `@mui/material-pigment-css`, `esbuild`); (c) `npm view optionalDependencies` for each pass-(b) addition to catch their platform packages (e.g. all `@esbuild/*` when `esbuild` was never installed). `addIfNew(name, version)` inner helper deduplicates across all passes. Complex peer dep version ranges (`\|\|`, comparisons) are resolved to a concrete latest version via `semver.maxSatisfying()` before install. Runs `npm audit` after collection. |
 | `npm-download-service/src/downloader.ts` | Concurrently runs `npm pack <name>@<version>` for all resolved packages via `Promise.allSettled`, collects results (succeeded/failed), bundles all tarballs + `metadata.json` into a `.tgz` via `archiver` |
@@ -56,16 +63,47 @@ Volume mounts:
 
 | File | Role |
 |------|------|
-| `telegram-bot/src/index.ts` | Bot entry point; registers middleware (session → cancel → stage), all command handlers, `bot.on('message')` passive package.json handler, startup DB index creation and env var validation |
+| `telegram-bot/src/index.ts` | Bot entry point; registers middleware (session → cancel → stage), all command handlers, `bot.on('message')` passive handler (detects npm/docker/python inputs silently), startup DB index creation and env var validation (`NPM_DOWNLOAD_SERVICE_URL` + `DOCKER_DOWNLOAD_SERVICE_URL` + `PYTHON_DOWNLOAD_SERVICE_URL` all required) |
 | `telegram-bot/src/db/index.ts` | MongoDB connection management (`connectDb`, `getDb`, `closeDb`) |
 | `telegram-bot/src/db/clients.ts` | `clients` collection: `registerClient`, `approveClient`, `grantAdmin`, `getClientByTelegramId`, `getClientById`, `getPendingClients`, `ensureIndexes` — `Client` interface includes optional `isAdmin` field |
 | `telegram-bot/src/db/subscribers.ts` | `subscribers` collection: `addSubscriber`, `removeSubscriber`, `getAllSubscribers`, `ensureIndexes` |
-| `telegram-bot/src/db/jobs.ts` | `jobs` collection: `addJob`, `getPendingJobs`, `updateJobStatus`, `getJobByJobId`, `ensureIndexes` — records each download request with `clientId`, `jobId`, `startedAt`; optional `status` (`"success"` \| `"failed"`), `completedAt`, and `completedBy` (Telegram ID of the admin who resolved it) set by `/notify_client`; `getPendingJobs(limit, maxAgeDays?)` accepts an optional `maxAgeDays` — when provided, adds `startedAt: { $gte: now - maxAgeDays * 24h }` to the query |
-| `telegram-bot/src/commands/helpers.ts` | Shared helpers: `BotContext`, `getText`, `requireText`, `checkSecret`, `parseAndValidatePackageJson`, `parseNpmUrl`, `MAX_PACKAGE_JSON_BYTES`, `ALLOWED_MIME_TYPES`, `CALLBACK_PREFIXES`, `formatClientName`, `requireCallbackData`, `SECRET_PROMPT_STEP` — `SECRET_PROMPT_STEP` checks `isAdmin` in DB and bypasses the prompt for known admins; `checkSecret` persists `isAdmin` via `grantAdmin` and auto-subscribes via `addSubscriber` on first successful validation |
+| `telegram-bot/src/db/jobs.ts` | `jobs` collection: `addJob`, `getPendingJobs`, `updateJobStatus`, `getJobByJobId`, `ensureIndexes` — records each download request with `clientId`, `jobId`, `startedAt`, `serviceType` (`"npm"` \| `"docker"` \| `"python"`, optional for backwards compat with pre-existing docs); optional `status` (`"success"` \| `"failed"`), `completedAt`, and `completedBy` (Telegram ID of the admin who resolved it) set by `/notify_client`; `getPendingJobs(limit, maxAgeDays?)` accepts an optional `maxAgeDays` — when provided, adds `startedAt: { $gte: now - maxAgeDays * 24h }` to the query |
+| `telegram-bot/src/commands/helpers.ts` | Shared helpers: `BotContext`, `getText`, `requireText`, `checkSecret`, `MAX_PACKAGE_JSON_BYTES`, `ALLOWED_MIME_TYPES`, `CALLBACK_PREFIXES`, `formatClientName`, `requireCallbackData`, `SECRET_PROMPT_STEP` — `SECRET_PROMPT_STEP` checks `isAdmin` in DB and bypasses the prompt for known admins; `checkSecret` persists `isAdmin` via `grantAdmin` and auto-subscribes via `addSubscriber` on first successful validation. Service-specific parsers have moved to `commands/parsers/`. |
+| `telegram-bot/src/commands/parsers/npm.ts` | npm-specific parsing: `parseAndValidatePackageJson(text)` and `parseNpmUrl(text)` (moved from `helpers.ts`). `parseAndValidatePackageJson` validates a JSON string and returns a field-allowlisted object or `null`. `parseNpmUrl` matches an npmjs.com URL and returns `{ name, version }` with shell-metacharacter validation. |
+| `telegram-bot/src/commands/parsers/docker.ts` | Docker-specific parsing: `parseDockerJson(text)` validates a `{ images, platform? }` JSON payload — caps `images` at `MAX_DOCKER_IMAGES` (20) and validates `platform` against `ALLOWED_PLATFORMS`; `parseDockerHubUrl(text)` matches `hub.docker.com/_/<image>` (official) and `hub.docker.com/r/<org>/<name>` (user/org) URLs; both return `{ images, platform }` or `null`. `validateDockerImageName` is the shared image-name validator used by both. Tag defaults to `latest` when not present in the URL. |
+| `telegram-bot/src/commands/parsers/python.ts` | Python-specific parsing: `parsePyPIUrl(text)` matches `pypi.org/project/<name>/` and `pypi.org/project/<name>/<version>/` URLs, returning `{ requirements: { [name]: versionSpec } }` or `null`. `parseRequirementsTxt(text)` validates requirements.txt content line by line (skips comments, option lines, environment markers); returns `{ requirements }` or `null` if no valid package lines found. `parsePyprojectToml(text)` parses Poetry-format `pyproject.toml` via `@iarna/toml`, extracts `[tool.poetry.dependencies]` and all `[tool.poetry.group.*.dependencies]` (skips `python` key), converts caret/tilde specs to pip-compatible ranges (`^1.2.3` → `>=1.2.3,<2.0.0`, `~1.2.0` → `>=1.2.0,<1.3.0`); returns `{ requirements, devRequirements }` or `null` if not a poetry project. |
 | `telegram-bot/src/commands/approveClient.ts` | 4-step wizard: (secret prompt or admin bypass) → validate → show inline keyboard of pending clients → confirm with Yes/No buttons → approve |
-| `telegram-bot/src/commands/notifyClient.ts` | 4-step wizard: (secret prompt or admin bypass) → validate → show inline keyboard of last 5 pending jobs from the past 7 days (no `status` field) → select job → Success/Failed buttons → update `status`/`completedAt`/`completedBy` in DB → send outcome message to original requestor |
+| `telegram-bot/src/commands/notifyClient.ts` | 4-step wizard: (secret prompt or admin bypass) → validate → show inline keyboard of last 5 pending jobs from the past 7 days (no `status` field) → select job → Success/Failed buttons → update `status`/`completedAt`/`completedBy` in DB → send outcome message to original requestor. Job labels are prefixed with `[npm]`, `[docker]`, or `[python]`; legacy jobs without `serviceType` fall back to `[npm]`. |
 | `telegram-bot/src/commands/subscribe.ts` | Two 2-step wizards: `subscribeScene` and `unsubscribeScene` — both use the same admin-bypass step 0 |
-| `telegram-bot/src/commands/request.ts` | 2-step wizard: prompt for `package.json` or npmjs.com URL → validate → `POST /upload` → record job in `jobs` collection → `POST /jobs` → reply job ID → notify all subscribers. Exports `processPackageJsonRequest(ctx, pkg)` and `processNpmUrlRequest(ctx, name, version)` — both shared by the wizard and the passive message handler in `index.ts` |
+| `telegram-bot/src/commands/request.ts` | Multi-service dispatcher: 2-step wizard that auto-detects service type from input and routes to the correct service. Detection order: (1) npmjs.com URL → npm, (2) hub.docker.com URL → docker, (3) pypi.org URL → python, (4) JSON with dep fields → npm, (5) JSON with `images` key → docker. Inner `submitJob(ctx, serviceUrl, serviceType, payload)` handles upload → job record → job start → subscriber notification for all service types. Exports `processPackageJsonRequest`, `processNpmUrlRequest`, `processDockerJsonRequest`, `processPythonUrlRequest`, `processPythonPayloadRequest`, and `resolveRawText` — all shared with the passive handler in `index.ts`. |
+
+## docker-download-service source map
+
+| File | Role |
+|------|------|
+| `docker-download-service/src/index.ts` | HTTP server entry point; creates `input/` and `output/` dirs, starts Express on `SERVER_PORT` |
+| `docker-download-service/src/app.ts` | Express app factory; mounts `filesRouter` and `jobsRouter`; serves Swagger UI at `GET /docs`; registers global `errorHandler`; sets explicit `express.json({ limit: "100kb" })` body size cap |
+| `docker-download-service/src/swagger.ts` | OpenAPI 3.1.0 document exported as `swaggerDocument` |
+| `docker-download-service/src/routes/files.ts` | `POST /upload` — validates image names (via `validateImageName`), caps `images` at `MAX_IMAGES` (20), validates `platform` against `ALLOWED_PLATFORMS`, saves sanitized payload to `input/<id>.json`; `GET /files` (with `?showToday` filter) |
+| `docker-download-service/src/routes/jobs.ts` | `POST /jobs` — fire-and-forget download job; validates `id` matches `/^\d{8}-\d{4}-\d+$/` before using it in a path join; reads saved payload, calls `resolveImages` then `downloadAndZip` |
+| `docker-download-service/src/middleware/errorHandler.ts` | Global Express error handler |
+| `docker-download-service/src/types.ts` | All shared TypeScript interfaces (`DockerPayload`, `ResolvedImage`, `AuditSeverityCounts`, `ImageMetadata`, `DockerMetadata`). `ImageMetadata` carries the per-image hardening fields: `hardened: boolean`, `patchedPackageCount?: number`, `hardenReason?: string`. |
+| `docker-download-service/src/resolver.ts` | Exports `validateImageName`, `ALLOWED_PLATFORMS`, and `MAX_IMAGES` (20). `resolveImages` validates platform against `ALLOWED_PLATFORMS`, enforces the image count cap, validates image names (no shell metacharacters, ≤128 chars), deduplicates by `name:tag`, normalises tag (defaults to `latest`), returns `ResolvedImage[]`. No dependency graph — Docker has no transitive deps. |
+| `docker-download-service/src/downloader.ts` | Concurrently runs `docker pull --platform <platform> <image>:<tag>` for all images via `Promise.allSettled`. For `latest`-tagged images, tries the OCI version label first, falls back to a short repo-digest filename suffix. Runs a Trivy **pre-scan** (Trivy container, stdout captured and written to `/tmp/copa-reports/`), then calls the **Copa binary** (`copa patch`) installed in the service image to produce a hardened image. Re-tags the patched image to the user-facing tag, `docker save`s it, then runs Trivy a second time to record the post-patch CVE counts in `metadata.json.audit`. Cleans up with `docker rmi`. Bundles all `.tar` files + `metadata.json` into `output/<id>.tgz` via `archiver`. |
+
+## python-download-service source map
+
+| File | Role |
+|------|------|
+| `python-download-service/src/index.ts` | HTTP server entry point; creates `input/` and `output/` dirs, starts Express on `SERVER_PORT` (default 3002) |
+| `python-download-service/src/app.ts` | Express app factory; mounts `filesRouter` and `jobsRouter`; serves Swagger UI at `GET /docs`; registers global `errorHandler`; sets explicit `express.json({ limit: "100kb" })` body size cap |
+| `python-download-service/src/swagger.ts` | OpenAPI 3.1.0 document exported as `swaggerDocument` |
+| `python-download-service/src/routes/files.ts` | `POST /upload` — validates `PythonPayload` via `validatePayload`, generates id, saves to `input/<id>.json`; `GET /files` (with `?showToday` filter) |
+| `python-download-service/src/routes/jobs.ts` | `POST /jobs` — fire-and-forget download job; validates `id` matches `/^\d{8}-\d{4}-\d+$/`; reads input JSON and calls `downloadAndBundle` |
+| `python-download-service/src/middleware/errorHandler.ts` | Global Express error handler |
+| `python-download-service/src/resolver.ts` | Exports `ALLOWED_PLATFORMS`, `ALLOWED_PYTHON_VERSIONS`, `DEFAULT_PLATFORMS` (`["linux_x86_64", "win_amd64"]`), `DEFAULT_PYTHON_VERSIONS` (`["3.11", "3.12"]`), `MAX_PACKAGES` (500), `PYTHON_PACKAGE_NAME_REGEX`. `validatePayload(payload)` returns an error string or null. `resolveTargets(payload)` expands platforms × pythonVersions into a `DownloadTarget[]`, filling defaults when the fields are absent. |
+| `python-download-service/src/downloader.ts` | Writes a merged `requirements.txt` from `requirements` + `devRequirements`. For each `(platform, pythonVersion)` target runs `pip3 download -r requirements.txt --only-binary :all: --platform <p> --python-version <v> --implementation cp --abi cp<VV> --dest <dir>` via `execFileAsync` (not `exec`). Results are collected with `Promise.allSettled`; successes are merged into a single deduped dir (first-writer wins by filename). Failed targets are recorded in `metadata.json`. Runs `pip-audit -r requirements.txt --format json` after download, aggregates severity counts. Bundles everything into `output/<id>.tgz` via `archiver`. |
+| `python-download-service/src/types.ts` | All shared TypeScript interfaces (`PythonPayload`, `DownloadTarget`, `FailedTarget`, `AuditSeverityCounts`, `PythonMetadata`) |
 
 ## database source map
 
@@ -80,7 +118,7 @@ Volume mounts:
 
 **No single-letter variable names** — Use descriptive names throughout. Single-letter names (e.g. `m`, `p`, `k`) are banned as they are hard to read and debug. For example, use `match` for regex results, `pkg` for package objects, `key` for object keys.
 
-**Prettier for code formatting** — both `npm-download-service` and `telegram-bot` use Prettier (exact version, pinned in `devDependencies`) with a shared config: `trailingComma: "all"`, `printWidth: 120`, `useTabs: false`, `tabWidth: 2`. Run `npm run format` in either package to reformat all `src/**/*.{ts,js}` files. Config lives in `.prettierrc` at each package root.
+**Prettier for code formatting** — all four services (`npm-download-service`, `docker-download-service`, `python-download-service`, `telegram-bot`) use Prettier (exact version, pinned in `devDependencies`) with a shared config: `trailingComma: "all"`, `printWidth: 120`, `useTabs: false`, `tabWidth: 2`. Run `npm run format` in any package to reformat all `src/**/*.{ts,js}` files. Config lives in `.prettierrc` at each package root.
 
 **Import ordering** — imports are grouped in three sections, each separated by a blank line: (1) internet/npm packages (e.g. `express`, `telegraf`, `date-fns`), (2) Node.js built-in/library packages (e.g. `fs`, `path`, `os`, `child_process`), (3) project-local imports (e.g. `./app`, `../types`). No `import * as X` wildcard imports for internet or library packages — always use named imports (e.g. `import { readFileSync, writeFileSync } from "fs"`). In `downloader.ts` the Promise executor uses `(resolveZip, rejectZip)` to avoid shadowing the `resolve` named import from `path`.
 
@@ -98,7 +136,7 @@ Volume mounts:
 
 **`date-fns` for local-time timestamps** — all timestamps (`startedAt`, `completedAt`, `uploadedAt`, health check) use `formatISO()` from `date-fns`, which produces local time with UTC offset (e.g. `2026-03-21T10:00:00+08:00`) instead of UTC `Z` strings. The ID prefix uses `format(new Date(), 'yyyyMMdd-HHmm')` for a compact local-time stamp. `telegram-bot` also uses `date-fns` (`format()`) when displaying `registeredAt` timestamps to the admin in the approve-client flow.
 
-**`TZ=Asia/Singapore` in containers** — `npm-download-service` and `telegram-bot` both set `TZ: Asia/Singapore` via `environment:` in `docker-compose.yml`. Without this, Node.js inside the container uses UTC, making all `date-fns` local-time calls produce UTC timestamps and UTC-offset IDs (`+00:00`).
+**`TZ=Asia/Singapore` in containers** — all three services set `TZ: Asia/Singapore` via `environment:` in `docker-compose.yml`. Without this, Node.js inside the container uses UTC, making all `date-fns` local-time calls produce UTC timestamps and UTC-offset IDs (`+00:00`).
 
 **Schema-driven DB initialisation** — `database/schemas/*.json` are the single source of truth for collection structure. `database/init/01-init.js` reads all JSON files generically on first MongoDB startup; adding a new collection means adding one JSON file with no changes to the init script.
 
@@ -110,13 +148,43 @@ Volume mounts:
 
 **`/cancel` middleware ordering** — the cancel command is registered on the bot after `session()` but before `stage.middleware()`. This ensures it intercepts `/cancel` before any active scene's step handlers can consume the message. It reads `ctx.session.__scenes.current` (via the typed `Scenes.WizardSession` cast) to detect whether a scene is active.
 
-**Shared wizard helpers** — all shared helpers live in `commands/helpers.ts`. `parseAndValidatePackageJson(text)` parses a JSON string, asserts the result is a non-array object with at least one dep field, validates that all dep values are strings (prevents resolver crashes), and returns only the allowlisted fields (`name`, `version`, `dependencies`, `devDependencies`, `peerDependencies`) — stripping everything else before it reaches `/upload`. Returns `null` on any failure. `parseNpmUrl(text)` matches an npmjs.com package URL and returns `{ name, version }` — defaulting to `"latest"` when no `/v/<version>` segment is present. Query strings and fragments (e.g. `?activeTab=dependencies`) are stripped before matching so tab URLs copied directly from npmjs.com work. After matching, `name` is validated against npm naming rules (`^(?:@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*|[a-z0-9][a-z0-9._-]*)$`, ≤214 chars) and `version` against a safe character set (`^[a-zA-Z0-9][a-zA-Z0-9._+\-]*$`, ≤64 chars) — this rejects shell metacharacters at the earliest entry point. Returns `null` for non-matching or invalid input. `requireCallbackData(ctx, prefix, errorMsg)` validates a callback query, answers it, and returns the data string after the given prefix — or replies with `errorMsg` and returns `null`; used by all inline-keyboard steps in admin scenes. `formatClientName(client)` joins `firstName` and `lastName` filtering out blanks. `CALLBACK_PREFIXES` is a `const` object of all inline-keyboard callback data prefixes (`SELECT_CLIENT`, `CONFIRM_ACTION`, `SELECT_JOB`, `SELECT_OUTCOME`). `SECRET_PROMPT_STEP` is the shared first wizard step used by all admin-gated scenes — replies "Enter the admin secret:" and advances the wizard.
+**Service-specific parsers in `commands/parsers/`** — npm, docker, and python input parsing live in separate files rather than `helpers.ts`. `parsers/npm.ts` exports `parseAndValidatePackageJson` and `parseNpmUrl`; `parsers/docker.ts` exports `parseDockerJson`, `parseDockerHubUrl`, and `validateDockerImageName`; `parsers/python.ts` exports `parsePyPIUrl`, `parseRequirementsTxt`, and `parsePyprojectToml`. `helpers.ts` retains only truly shared utilities (`BotContext`, `getText`, `requireText`, `checkSecret`, `requireCallbackData`, `formatClientName`, `CALLBACK_PREFIXES`, `SECRET_PROMPT_STEP`, `MAX_PACKAGE_JSON_BYTES`, `ALLOWED_MIME_TYPES`). When adding a new service, add `parsers/<service>.ts` following the same pattern.
 
-**Passive package detection** — `index.ts` registers a `bot.on('message')` handler (after all commands) that automatically processes messages as a `/request` without the user typing a command. It triggers when a registered+approved user sends any document, text starting with `{`, or an npmjs.com package URL. Before downloading a document, the handler checks `file_size` (>100 KB → silent return) and `mime_type`/file extension against `ALLOWED_MIME_TYPES` (`application/json`, `text/plain`, `text/json`, `application/octet-stream`, `.json`, `.txt`); unrecognised types are silently ignored. After downloading, body length is rechecked as defence-in-depth. Both document and text paths use `parseAndValidatePackageJson` and silently ignore invalid input. npm URL inputs are handled by `parseNpmUrl` and routed to `processNpmUrlRequest`. The upload+job+notify logic lives in `commands/request.ts`, shared with the wizard. The wizard applies the same size and MIME checks but replies with error messages instead of silently ignoring.
+**Shared wizard helpers** — `requireCallbackData(ctx, prefix, errorMsg)` validates a callback query, answers it, and returns the data string after the given prefix — or replies with `errorMsg` and returns `null`; used by all inline-keyboard steps in admin scenes. `formatClientName(client)` joins `firstName` and `lastName` filtering out blanks. `CALLBACK_PREFIXES` is a `const` object of all inline-keyboard callback data prefixes (`SELECT_CLIENT`, `CONFIRM_ACTION`, `SELECT_JOB`, `SELECT_OUTCOME`). `SECRET_PROMPT_STEP` is the shared first wizard step used by all admin-gated scenes — replies "Enter the admin secret:" and advances the wizard.
+
+**JSON detection order: npm before docker** — when a message contains a JSON text/file, the bot checks for npm dep fields first (`dependencies`, `devDependencies`, `peerDependencies`). Only if none are present does it check for the `images` key (docker). This prevents a `package.json` that happens to have a custom `images` field from being misrouted to the docker service. URL routing is separate: `npmjs.com` → npm, `hub.docker.com` → docker, `pypi.org` → python; these are mutually exclusive so order doesn't matter.
+
+**`serviceType` field in jobs** — the `Job` interface has an optional `serviceType?: "npm" | "docker" | "python"` field. It is optional (not required) so that existing DB documents without the field continue to be read correctly. New jobs always pass `serviceType`. `/notify_client` labels use a `serviceTagMap` lookup with `"npm"` as the fallback — legacy jobs without the field display as `[npm]`.
+
+**Passive package detection** — `index.ts` registers a `bot.on('message')` handler (after all commands) that automatically processes messages as a `/request` without the user typing a command. It triggers when a registered+approved user sends any document, text starting with `{`, an npmjs.com URL, a hub.docker.com URL, or a pypi.org URL. For Python: files named exactly `requirements.txt` are downloaded and validated via `parseRequirementsTxt` before routing; files named exactly `pyproject.toml` are validated via `parsePyprojectToml`; both route silently to the python service on success and are silently ignored on failure. Pasted requirements.txt text is NOT detected — python text input is PyPI URL only. Before downloading any document, the handler checks `file_size` (>100 KB → silent return) and `mime_type`/file extension (now also accepts `.toml`); unrecognised types are silently ignored. JSON input is tried as npm first, then docker. The upload+job+notify logic lives in `commands/request.ts` (`submitJob` helper), shared with the wizard. The wizard replies with error messages on bad input; the passive handler silently ignores it.
 
 **Three-pass discovery for uninstalled packages** — packages never placed in `node_modules` by `npm install` yet still needed for the offline bundle come in three categories. After `walkNodeModules`, `resolver.ts` runs three passes: (a) reads `package-lock.json` and adds every entry with `optional: true` that is not already in `seen` — catches platform-specific optional deps (e.g. `@esbuild/win32-x64`) that npm skips for non-matching OS/CPU; npm v11 still writes these to the lockfile with `optional: true`; no depth filter is applied since `seen` deduplicates. (b) iterates the snapshot of `results` collected so far, reads each installed package's `package.json`, collects entries in `peerDependencies` marked `optional: true` in `peerDependenciesMeta`, deduplicates by name, then resolves each version via `resolveVersionRange()` and adds if not in `seen` — catches optional peer deps like `@mui/material-pigment-css` and `esbuild` (declared by `@mui/material` and `vite` respectively) that npm v11 does **not** write to the lockfile at all. (c) **non-recursive**: iterates only packages added by pass (b), calls `npm view <name>@<version> optionalDependencies --json` for each, and adds their optional deps — catches platform packages like all 27 `@esbuild/*` variants whose parent (`esbuild`) was itself never installed by npm and therefore absent from node_modules and the lockfile; exact versions use `semver.valid()` directly, ranges fall back to `resolveVersionRange()`. Pass (c) deliberately does not feed its own outputs back in — native binary packages like `@esbuild/*` have no further `optionalDependencies`, so the chain terminates after at most two effective rounds.
 
 **`/help` lists only user-facing commands** — admin commands (`/subscribe`, `/unsubscribe`, `/approve_client`, `/notify_client`) are intentionally omitted from the `/help` reply to keep the interface clean for regular users.
+
+**Input validation at the upload boundary** — `POST /upload` is the trust boundary for both services. All user-controlled values are validated and rejected early rather than at job-run time. For `docker-download-service`: image names are validated against `DOCKER_IMAGE_REGEX` (≤128 chars, lowercase alphanum + `._-`, optional `org/name` prefix, optional `:tag`); platform is validated against `ALLOWED_PLATFORMS` (exported from `resolver.ts`); `images` count is capped at `MAX_IMAGES` (20). For `npm-download-service`: dep field keys (package names) are validated against `NPM_PACKAGE_NAME_REGEX`; each dep field is capped at `MAX_DEPS_PER_FIELD` (500 entries). Both services also validate the `id` parameter in `POST /jobs` against `/^\d{8}-\d{4}-\d+$/` before using it in a `path.join` — `path.join` does not block traversal sequences so format validation is the correct defence. Both `app.ts` files set an explicit `express.json({ limit: "100kb" })` body cap.
+
+**`TRIVY_VERSION` env var** — the Trivy version used for scanning is controlled by `TRIVY_VERSION` in `docker-download-service/.env` (read at module load in `downloader.ts` as `aquasec/trivy:${TRIVY_VERSION}`). Defaults to `latest` if unset. Set it to a specific version tag (e.g. `0.62.0`) in `.env` when reproducibility or supply-chain control is required.
+
+**`execFile` for `docker` and `trivy` in docker-download-service** — `downloader.ts` uses `execFileAsync = promisify(execFile)` for all `docker` and `trivy` invocations, for the same reason as npm: image names are user-controlled and `execFile` bypasses the shell entirely, preventing injection via metacharacters.
+
+**Docker image tarball naming** — `latest`-tagged images get a short digest suffix so repeated pulls of `latest` produce distinct filenames: `nginx-latest-a5de3e7a.tar`. All other tags use `<name>-<tag>.tar` (e.g. `nginx-1.25.tar`), since pinned tags are stable. Slashes in namespaced image names are replaced with dashes: `bitnami/postgresql:16` → `bitnami-postgresql-16.tar`.
+
+**Trivy for docker vulnerability scanning** — `docker-download-service` runs `trivy image --format json <image>:<tag>` after each pull, the same way npm-download-service runs `npm audit --json`. Trivy exits non-zero when vulnerabilities are found; catch the error and read `stdout` for the JSON report. Severity levels map to `{ critical, high, medium, low, unknown }` in `metadata.json`.
+
+**Docker daemon access via host socket** — `docker-download-service` requires the Docker daemon to run `docker pull`, `docker save`, etc. When running in a container, `/var/run/docker.sock` is bind-mounted from the host. This gives the container root-equivalent access to the host Docker daemon and is acceptable for a self-hosted internal tool. Docker-in-Docker (`--privileged`) is not used.
+
+**Copa for OS-package hardening** — `docker-download-service` runs every successfully pulled image through [Copacetic](https://github.com/project-copacetic/copacetic) (`copa`) before save. Copa is invoked as an ephemeral container (`ghcr.io/project-copacetic/copacetic:${COPA_VERSION}`, defaulting to `latest`), reads the Trivy JSON report, and patches only CVE-flagged OS packages — non-vulnerable packages are untouched. The patched image is `docker tag`'d back to the user-facing ref so `docker load` on the target machine produces the original tag (e.g. `nginx:1.27.5`). Hardening is **always-on** and **best-effort**: if Copa errors, the original unpatched image is saved instead and `hardened: false` + a short `hardenReason` are recorded in `metadata.json`. Windows images are skipped upfront (Copa is Linux-only). Copa uses BuildKit via the host Docker daemon, so the host must be Docker 23+.
+
+**`COPA_VERSION` env var** — the Copa version is controlled by `COPA_VERSION` in `docker-download-service/.env` (read at module load in `downloader.ts` as `ghcr.io/project-copacetic/copacetic:${COPA_VERSION}`). Defaults to `latest` if unset. Pin to a specific tag (e.g. `0.9.0`) when reproducibility is required. Same pattern as `TRIVY_VERSION`.
+
+**`COPA_TIMEOUT` env var** — the Copa patch timeout is controlled by `COPA_TIMEOUT` in `docker-download-service/.env` (passed as `--timeout` to `copa patch`). Defaults to `30m` if unset. Increase for large images that exceed the default; Copa's built-in default is 5 minutes.
+
+**Two-pass Trivy with a shared named volume** — Trivy runs twice per image. The **pre-scan** is plumbing for Copa: invoked with `--output /reports/<file>.json`, it writes the JSON report into the shared `copa-reports` named docker volume (mounted at `/reports` in both the Trivy and Copa containers). The service itself never reads or writes that volume. The **post-scan** runs after Copa patches, streams JSON to stdout, and is parsed for the severity counts written to `metadata.json.audit`. The `audit` numbers users see are post-patch (the residual, not the original upstream state). The `trivy-cache` volume is shared between both invocations, so the second run is fast.
+
+**Copa "no patchable vulnerabilities" no-op** — when the Trivy report contains no CVEs that Copa can patch, Copa may exit non-zero **or exit 0** with output containing phrases like "no patches" / "no vulnerabilities" / "no updates" / "already up-to-date". `runCopaPatch` computes `isNoop = /no.{0,30}(patches|vulnerab|updat)|already.{0,20}up.to.date/i.test(stdout + stderr)` once and checks it in both the non-zero and zero-exit branches, treating either as a successful no-op: `hardened: true, patchedPackageCount: 0` (no `patchedTag`, so we save the original image unchanged). Any other Copa error is treated as `hardened: false` with the first non-empty stderr line as `hardenReason` (truncated to 200 chars).
+
+**Patched-tag naming and cleanup** — Copa writes its output to a temporary tag `<image-name>:copa-<jobId>` to avoid clobbering the user-facing tag during the run. After Copa succeeds, `docker tag <copa-tag> <workingRef>` reassigns the canonical ref to point at the patched image. `docker save` then dumps the patched bytes under the user-facing tag. Cleanup `docker rmi` removes the original, the resolved-version tag (if any), AND the `copa-<jobId>` tag — all best-effort with `.catch(() => {})`.
 
 ## Known gotchas
 
@@ -134,18 +202,46 @@ Volume mounts:
 
 - **`/notify_client` re-fetches job in step 4** — `ctx.wizard.state` stores only the `jobId` string, not the `clientId` ObjectId. ObjectIds lose their prototype through Telegraf's session serialisation and become plain objects. Re-fetching the job document by `jobId` in the final step is the correct pattern.
 
+- **`trivy` exits with code 1** when vulnerabilities are found. `stdout` is still valid JSON. Always catch the error and read `err.stdout`; do not treat a non-zero exit as a failure. Same pattern as `npm audit`.
+
+- **Docker socket unavailable locally** — `docker-download-service` requires a running Docker daemon. When developing locally without Docker Compose, ensure Docker Desktop or `dockerd` is running. Inside a container, the socket mount (`/var/run/docker.sock`) must be present — if it is missing, all `docker pull` calls will fail with `connect ENOENT`.
+
+- **`docker rmi` failure is silent** — after `docker save`, `downloader.ts` calls `docker rmi` to clean up. This call is intentionally fire-and-forget (`.catch(() => {})`). If it fails (e.g. the image was tagged elsewhere), the archive is unaffected; only host storage cleanup is skipped.
+
+- **`copa-reports` volume is auto-created and never cleaned** — the named volume `copa-reports` is implicitly created on first `docker run -v copa-reports:/reports ...`; it is not declared in `docker-compose.yml`. Trivy pre-scan reports accumulate in the volume across jobs (each file ~100 KB, named `<jobId>-<safeName>-<tag>.json`). There is no cleanup pass. To reclaim space: `docker volume rm copa-reports` while no jobs are running.
+
+- **`digest` field reflects the SOURCE image, not the patched bytes** — when `latest` cannot be resolved via the OCI label, the `digest` in `metadata.json` is captured from the registry's RepoDigest *before* Copa patches the image. The bytes inside the tarball will differ from this digest (since Copa adds layers). The digest is kept for filename disambiguation between pulls of `latest` at different points in time; it is not a content hash of the saved tarball.
+
+- **Copa needs Docker 23+ on the host** — Copa drives BuildKit via the Docker daemon over the mounted socket. Older Docker versions do not expose BuildKit through `docker` directly and Copa will fail with a builder-not-found error. The `hardenReason` will surface this as `"copa: ..."` but the symptom is non-obvious — verify host Docker version when Copa fails on every image in a job.
+
+**`pip download` for cross-platform wheel fetching** — `python-download-service` uses `pip3 download --only-binary :all: --platform <p> --python-version <v> --implementation cp --abi cp<VV>` via `execFileAsync` (not `exec`) for each `(platform, pythonVersion)` target. `execFile` bypasses the shell entirely; platform/version values are user-controlled after whitelist validation, so this is the correct pattern. `--only-binary :all:` is required for pip to respect the `--platform` flag when downloading for a different OS than the service host. Targets run concurrently with `Promise.allSettled`; failures are per-target (the overall job continues).
+
+**Default platform and Python version targets** — when `platforms` and `pythonVersions` are absent from the upload payload, `python-download-service` defaults to `["linux_x86_64", "win_amd64"]` × `["3.11", "3.12"]` (4 pip runs). The full allowed sets are `ALLOWED_PLATFORMS` and `ALLOWED_PYTHON_VERSIONS` in `resolver.ts`. Both fields can be set explicitly in the payload to override.
+
+**Wheel deduplication across targets** — pure-Python wheels (e.g. `requests-2.31.0-py3-none-any.whl`) are identical across all targets. After each successful pip run the downloader merges files into a shared dir, skipping any filename that already exists (first-writer wins). Binary wheels have unique filenames encoding platform and ABI, so they never collide.
+
+**pip-audit for Python vulnerability scanning** — `python-download-service` runs `pip-audit -r requirements.txt --format json` after all downloads complete, the same way `npm-download-service` runs `npm audit --json`. pip-audit exits non-zero when vulnerabilities are found; catch the error and read `stdout`. Severity counts are aggregated into `{ critical, high, medium, low, unknown }` and written to `metadata.json.audit`. pip-audit failures are best-effort — if it errors the audit field is zeroed and the job completes normally.
+
+**Poetry version spec conversion in the bot parser** — `parsers/python.ts` converts poetry-style version specs to pip-compatible syntax before building the JSON payload. `^X.Y.Z` → `>=X.Y.Z,<(X+1).0.0`, `~X.Y.Z` → `>=X.Y.Z,<X.(Y+1).0`, `*` → `*`. The `python-download-service` API only ever receives pip-compatible specifiers; it never sees poetry syntax. The `python` key in `[tool.poetry.dependencies]` is skipped (it is a Python version constraint, not a package).
+
+**`@iarna/toml` for pyproject.toml parsing** — `parsers/python.ts` uses `@iarna/toml` (a pure-JS TOML parser) to read pyproject.toml. Regex-based TOML parsing is fragile for nested tables and inline tables, so a proper parser is used. Only `tool.poetry.*` keys are examined; non-poetry pyproject.toml files return null.
+
 ## TypeScript compilation
 
-After any change to a `.ts` file in either package, verify the affected package compiles cleanly:
+After any change to a `.ts` file in a package, verify the affected package compiles cleanly:
 
 ```bash
 cd npm-download-service && npx tsc --noEmit
+cd docker-download-service && npx tsc --noEmit
+cd python-download-service && npx tsc --noEmit
 cd telegram-bot && npx tsc --noEmit
 ```
 
 A clean run produces no output. Fix any errors before considering the task done.
 
-## Output structure (npm-download-service)
+## Output structure
+
+### npm-download-service
 
 Each `output/<id>.tgz` contains:
 
@@ -157,3 +253,32 @@ lodash-4.17.21.tgz
 ```
 
 `metadata.json` fields: `startedAt`, `completedAt`, `summary` (total/succeeded/failed), `audit` (severity counts + `highPackages`/`criticalPackages` as `{name, version}[]`), `packages` (succeeded), `failedPackages` (with error message).
+
+### docker-download-service
+
+Each `output/<id>.tgz` contains:
+
+```
+metadata.json
+nginx-latest-a5de3e7a.tar   ← "latest" tag + short digest
+redis-7.tar                 ← pinned tag, no digest
+bitnami-postgresql-16.tar
+```
+
+`metadata.json` fields: `startedAt`, `completedAt`, `summary` (total/succeeded/failed), `audit` (`{ critical, high, medium, low, unknown }` from Trivy), `packages` (succeeded, includes `digest` for `latest`-tagged images), `failedPackages` (with error message). Load images on the target machine with `docker load -i <filename>.tar`.
+
+### python-download-service
+
+Each `output/<id>.tgz` contains:
+
+```
+metadata.json
+numpy-2.2.0-cp311-cp311-linux_x86_64.whl
+numpy-2.2.0-cp311-cp311-win_amd64.whl
+numpy-2.2.0-cp312-cp312-linux_x86_64.whl
+numpy-2.2.0-cp312-cp312-win_amd64.whl
+requests-2.31.0-py3-none-any.whl   ← pure-Python wheel, one copy for all targets
+...
+```
+
+`metadata.json` fields: `startedAt`, `completedAt`, `summary` (`totalTargets`/`succeededTargets`/`failedTargets`), `files` (list of all wheel filenames in the archive), `failedTargets` (array of `{ platform, pythonVersion, error }` for targets that failed), `audit` (`{ critical, high, medium, low, unknown }` from pip-audit). Install on the target machine with `pip install --no-index --find-links . <package-name>`.

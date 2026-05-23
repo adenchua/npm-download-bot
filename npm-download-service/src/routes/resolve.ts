@@ -49,7 +49,7 @@ resolveRouter.post("/resolve", async (req: Request, res: Response) => {
 
   for (const field of ["dependencies", "devDependencies", "peerDependencies"] as const) {
     if (!sanitized[field]) continue;
-    const entries = Object.entries(sanitized[field]!);
+    const entries = Object.entries(sanitized[field]);
     const resolved = await Promise.all(
       entries.map(async ([name, version]): Promise<[string, string]> => {
         if (semver.valid(version)) return [name, version];

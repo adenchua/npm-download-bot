@@ -8,6 +8,7 @@ export interface Job {
   clientId: ObjectId;
   jobId: string;
   startedAt: Date;
+  serviceType?: "npm" | "docker" | "python";
   status?: "success" | "failed";
   completedAt?: Date;
   completedBy?: number;
@@ -34,11 +35,7 @@ export async function getPendingJobs(limit: number, maxAgeDays?: number): Promis
   if (maxAgeDays !== undefined) {
     filter.startedAt = { $gte: new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000) };
   }
-  return col()
-    .find(filter)
-    .sort({ startedAt: -1 })
-    .limit(limit)
-    .toArray();
+  return col().find(filter).sort({ startedAt: -1 }).limit(limit).toArray();
 }
 
 export async function updateJobStatus(

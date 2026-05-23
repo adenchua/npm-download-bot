@@ -58,7 +58,11 @@ export const approveClientScene = new Scenes.WizardScene<BotContext>(
 
   // Step 3 — handle client selection
   async (ctx) => {
-    const data = await requireCallbackData(ctx, CALLBACK_PREFIXES.SELECT_CLIENT, "Please select a client from the list above.");
+    const data = await requireCallbackData(
+      ctx,
+      CALLBACK_PREFIXES.SELECT_CLIENT,
+      "Please select a client from the list above.",
+    );
     if (data === null) return;
 
     const telegramId = parseInt(data, 10);
@@ -84,7 +88,11 @@ export const approveClientScene = new Scenes.WizardScene<BotContext>(
 
   // Step 4 — handle Yes / No confirmation
   async (ctx) => {
-    const confirmation = await requireCallbackData(ctx, CALLBACK_PREFIXES.CONFIRM_ACTION, "Please use the Yes / No buttons above.");
+    const confirmation = await requireCallbackData(
+      ctx,
+      CALLBACK_PREFIXES.CONFIRM_ACTION,
+      "Please use the Yes / No buttons above.",
+    );
     if (confirmation === null) return;
 
     if (confirmation === "yes") {

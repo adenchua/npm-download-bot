@@ -8,8 +8,20 @@ import { registerCommand } from "./commands/register";
 import { approveClientScene, APPROVE_SCENE_ID } from "./commands/approveClient";
 import { notifyClientScene, NOTIFY_CLIENT_SCENE_ID } from "./commands/notifyClient";
 import { subscribeScene, unsubscribeScene, SUBSCRIBE_SCENE_ID, UNSUBSCRIBE_SCENE_ID } from "./commands/subscribe";
-import { requestScene, REQUEST_SCENE_ID, processPackageJsonRequest, processNpmUrlRequest } from "./commands/request";
-import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES, parseAndValidatePackageJson, parseNpmUrl } from "./commands/helpers";
+import {
+  requestScene,
+  REQUEST_SCENE_ID,
+  processPackageJsonRequest,
+  processNpmUrlRequest,
+  processDockerJsonRequest,
+  processPythonUrlRequest,
+  processPythonPayloadRequest,
+} from "./commands/request";
+import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES } from "./commands/helpers";
+import { parseAndValidatePackageJson, parseNpmUrl } from "./commands/parsers/npm";
+import { parseDockerJson, parseDockerHubUrl } from "./commands/parsers/docker";
+import { parsePyPIUrl, parseRequirementsTxt, parsePyprojectToml } from "./commands/parsers/python";
+import { logger } from "./logger";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
@@ -18,11 +30,17 @@ if (!token) {
 
 const bot = new Telegraf<BotContext>(token);
 
-const stage = new Scenes.Stage<BotContext>([approveClientScene, notifyClientScene, subscribeScene, unsubscribeScene, requestScene]);
+const stage = new Scenes.Stage<BotContext>([
+  approveClientScene,
+  notifyClientScene,
+  subscribeScene,
+  unsubscribeScene,
+  requestScene,
+]);
 bot.use(session());
 
 bot.command("cancel", async (ctx) => {
-  const wizardSession = ctx.session as Scenes.WizardSession;
+  const wizardSession = ctx.session;
   if (wizardSession.__scenes?.current) {
     delete wizardSession.__scenes.current;
     await ctx.reply("Conversation cancelled.");
@@ -39,7 +57,7 @@ bot.help((ctx) =>
     "Available commands:\n" +
       "/start — Welcome message\n" +
       "/register — Register your account\n" +
-      "/request — Submit a package.json to download npm packages\n" +
+      "/request — Submit a package.json or docker JSON to download packages\n" +
       "/cancel — Cancel the current conversation\n" +
       "/help — Show this message",
   ),
@@ -64,16 +82,18 @@ bot.command("request", async (ctx) => {
 });
 
 bot.on("message", async (ctx) => {
-  const wizardSession = ctx.session as Scenes.WizardSession;
+  const wizardSession = ctx.session;
   if (wizardSession.__scenes?.current) return;
 
   const msg = ctx.message;
   const isDocument = "document" in msg;
   const isJsonText = "text" in msg && msg.text.trimStart().startsWith("{");
   const npmUrlParsed = "text" in msg ? parseNpmUrl(msg.text) : null;
-  if (!isDocument && !isJsonText && !npmUrlParsed) return;
+  const dockerUrlParsed = "text" in msg && !npmUrlParsed ? parseDockerHubUrl(msg.text) : null;
+  const pypiUrlParsed = "text" in msg && !npmUrlParsed && !dockerUrlParsed ? parsePyPIUrl(msg.text) : null;
+  if (!isDocument && !isJsonText && !npmUrlParsed && !dockerUrlParsed && !pypiUrlParsed) return;
 
-  const client = await getClientByTelegramId(ctx.from!.id);
+  const client = await getClientByTelegramId(ctx.from.id);
   if (!client) {
     await ctx.reply("You are not registered. Use /register first.");
     return;
@@ -88,26 +108,71 @@ bot.on("message", async (ctx) => {
     return;
   }
 
-  let pkg: Record<string, unknown> | null = null;
+  if (dockerUrlParsed) {
+    await processDockerJsonRequest(ctx, dockerUrlParsed);
+    return;
+  }
+
+  if (pypiUrlParsed) {
+    const [name, version] = Object.entries(pypiUrlParsed.requirements)[0];
+    await processPythonUrlRequest(ctx, name, version);
+    return;
+  }
+
+  let rawText: string | null = null;
+  let fileName: string | null = null;
 
   if (isDocument) {
     const { file_size, mime_type, file_name } = msg.document;
     if (file_size && file_size > MAX_PACKAGE_JSON_BYTES) return;
     const mime = mime_type ?? "";
     const ext = (file_name ?? "").split(".").pop()?.toLowerCase() ?? "";
-    if (mime && !ALLOWED_MIME_TYPES.has(mime) && ext !== "json" && ext !== "txt") return;
+    if (mime && !ALLOWED_MIME_TYPES.has(mime) && ext !== "json" && ext !== "txt" && ext !== "toml") return;
     const fileLink = await ctx.telegram.getFileLink(msg.document.file_id);
     const res = await fetch(fileLink.href);
     const text = await res.text();
     if (text.length > MAX_PACKAGE_JSON_BYTES) return;
-    pkg = parseAndValidatePackageJson(text);
+    rawText = text;
+    fileName = file_name ?? null;
   } else if (isJsonText) {
-    pkg = parseAndValidatePackageJson(msg.text);
+    rawText = msg.text;
   }
 
-  if (!pkg) return;
+  if (!rawText) return;
 
-  await processPackageJsonRequest(ctx, pkg);
+  // Python file detection: requirements.txt by filename (with content validation)
+  if (fileName === "requirements.txt") {
+    const pythonPayload = parseRequirementsTxt(rawText);
+    if (pythonPayload) {
+      await processPythonPayloadRequest(ctx, pythonPayload);
+      return;
+    }
+    // Invalid requirements.txt content — fall through silently
+    return;
+  }
+
+  // Python file detection: pyproject.toml by filename
+  if (fileName === "pyproject.toml") {
+    const pythonPayload = parsePyprojectToml(rawText);
+    if (pythonPayload) {
+      await processPythonPayloadRequest(ctx, pythonPayload);
+      return;
+    }
+    // Not a poetry project — fall through silently
+    return;
+  }
+
+  // npm takes priority: dep fields beat images key
+  const pkg = parseAndValidatePackageJson(rawText);
+  if (pkg) {
+    await processPackageJsonRequest(ctx, pkg);
+    return;
+  }
+
+  const dockerPayload = parseDockerJson(rawText);
+  if (dockerPayload) {
+    await processDockerJsonRequest(ctx, dockerPayload);
+  }
 });
 
 async function main() {
@@ -117,12 +182,18 @@ async function main() {
   if (!process.env.NPM_DOWNLOAD_SERVICE_URL) {
     throw new Error("NPM_DOWNLOAD_SERVICE_URL is not set");
   }
+  if (!process.env.DOCKER_DOWNLOAD_SERVICE_URL) {
+    throw new Error("DOCKER_DOWNLOAD_SERVICE_URL is not set");
+  }
+  if (!process.env.PYTHON_DOWNLOAD_SERVICE_URL) {
+    throw new Error("PYTHON_DOWNLOAD_SERVICE_URL is not set");
+  }
   await connectDb();
   await ensureClientIndexes();
   await ensureSubscriberIndexes();
   await ensureJobIndexes();
-  bot.launch();
-  console.log("Telegram bot is running");
+  void bot.launch();
+  logger.log("Telegram bot is running");
 }
 
 async function shutdown(signal: string) {
@@ -130,7 +201,11 @@ async function shutdown(signal: string) {
   await closeDb();
 }
 
-process.once("SIGINT", () => shutdown("SIGINT"));
-process.once("SIGTERM", () => shutdown("SIGTERM"));
+process.once("SIGINT", () => {
+  void shutdown("SIGINT");
+});
+process.once("SIGTERM", () => {
+  void shutdown("SIGTERM");
+});
 
-main();
+void main();
