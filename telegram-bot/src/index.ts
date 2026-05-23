@@ -14,10 +14,13 @@ import {
   processPackageJsonRequest,
   processNpmUrlRequest,
   processDockerJsonRequest,
+  processPythonUrlRequest,
+  processPythonPayloadRequest,
 } from "./commands/request";
 import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES } from "./commands/helpers";
 import { parseAndValidatePackageJson, parseNpmUrl } from "./commands/parsers/npm";
 import { parseDockerJson, parseDockerHubUrl } from "./commands/parsers/docker";
+import { parsePyPIUrl, parseRequirementsTxt, parsePyprojectToml } from "./commands/parsers/python";
 import { logger } from "./logger";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -27,7 +30,13 @@ if (!token) {
 
 const bot = new Telegraf<BotContext>(token);
 
-const stage = new Scenes.Stage<BotContext>([approveClientScene, notifyClientScene, subscribeScene, unsubscribeScene, requestScene]);
+const stage = new Scenes.Stage<BotContext>([
+  approveClientScene,
+  notifyClientScene,
+  subscribeScene,
+  unsubscribeScene,
+  requestScene,
+]);
 bot.use(session());
 
 bot.command("cancel", async (ctx) => {
@@ -81,7 +90,8 @@ bot.on("message", async (ctx) => {
   const isJsonText = "text" in msg && msg.text.trimStart().startsWith("{");
   const npmUrlParsed = "text" in msg ? parseNpmUrl(msg.text) : null;
   const dockerUrlParsed = "text" in msg && !npmUrlParsed ? parseDockerHubUrl(msg.text) : null;
-  if (!isDocument && !isJsonText && !npmUrlParsed && !dockerUrlParsed) return;
+  const pypiUrlParsed = "text" in msg && !npmUrlParsed && !dockerUrlParsed ? parsePyPIUrl(msg.text) : null;
+  if (!isDocument && !isJsonText && !npmUrlParsed && !dockerUrlParsed && !pypiUrlParsed) return;
 
   const client = await getClientByTelegramId(ctx.from!.id);
   if (!client) {
@@ -103,24 +113,54 @@ bot.on("message", async (ctx) => {
     return;
   }
 
+  if (pypiUrlParsed) {
+    const [name, version] = Object.entries(pypiUrlParsed.requirements)[0];
+    await processPythonUrlRequest(ctx, name, version);
+    return;
+  }
+
   let rawText: string | null = null;
+  let fileName: string | null = null;
 
   if (isDocument) {
     const { file_size, mime_type, file_name } = msg.document;
     if (file_size && file_size > MAX_PACKAGE_JSON_BYTES) return;
     const mime = mime_type ?? "";
     const ext = (file_name ?? "").split(".").pop()?.toLowerCase() ?? "";
-    if (mime && !ALLOWED_MIME_TYPES.has(mime) && ext !== "json" && ext !== "txt") return;
+    if (mime && !ALLOWED_MIME_TYPES.has(mime) && ext !== "json" && ext !== "txt" && ext !== "toml") return;
     const fileLink = await ctx.telegram.getFileLink(msg.document.file_id);
     const res = await fetch(fileLink.href);
     const text = await res.text();
     if (text.length > MAX_PACKAGE_JSON_BYTES) return;
     rawText = text;
+    fileName = file_name ?? null;
   } else if (isJsonText) {
     rawText = msg.text;
   }
 
   if (!rawText) return;
+
+  // Python file detection: requirements.txt by filename (with content validation)
+  if (fileName === "requirements.txt") {
+    const pythonPayload = parseRequirementsTxt(rawText);
+    if (pythonPayload) {
+      await processPythonPayloadRequest(ctx, pythonPayload);
+      return;
+    }
+    // Invalid requirements.txt content — fall through silently
+    return;
+  }
+
+  // Python file detection: pyproject.toml by filename
+  if (fileName === "pyproject.toml") {
+    const pythonPayload = parsePyprojectToml(rawText);
+    if (pythonPayload) {
+      await processPythonPayloadRequest(ctx, pythonPayload);
+      return;
+    }
+    // Not a poetry project — fall through silently
+    return;
+  }
 
   // npm takes priority: dep fields beat images key
   const pkg = parseAndValidatePackageJson(rawText);
@@ -144,6 +184,9 @@ async function main() {
   }
   if (!process.env.DOCKER_DOWNLOAD_SERVICE_URL) {
     throw new Error("DOCKER_DOWNLOAD_SERVICE_URL is not set");
+  }
+  if (!process.env.PYTHON_DOWNLOAD_SERVICE_URL) {
+    throw new Error("PYTHON_DOWNLOAD_SERVICE_URL is not set");
   }
   await connectDb();
   await ensureClientIndexes();

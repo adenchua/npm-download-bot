@@ -6,12 +6,14 @@ import { getAllSubscribers } from "../db/subscribers";
 import { BotContext, MAX_PACKAGE_JSON_BYTES, ALLOWED_MIME_TYPES } from "./helpers";
 import { parseAndValidatePackageJson, parseNpmUrl } from "./parsers/npm";
 import { parseDockerJson, parseDockerHubUrl } from "./parsers/docker";
+import { parsePyPIUrl } from "./parsers/python";
 import { logger } from "../logger";
 
 export const REQUEST_SCENE_ID = "request";
 
 const npmServiceUrl = process.env.NPM_DOWNLOAD_SERVICE_URL!;
 const dockerServiceUrl = process.env.DOCKER_DOWNLOAD_SERVICE_URL!;
+const pythonServiceUrl = process.env.PYTHON_DOWNLOAD_SERVICE_URL!;
 
 // Reads the message as either a document download or inline text, returning the raw string.
 // Returns null (having already replied) on size/type violations.
@@ -51,7 +53,7 @@ export async function resolveRawText(ctx: BotContext): Promise<string | null> {
 async function submitJob(
   ctx: BotContext,
   serviceUrl: string,
-  serviceType: "npm" | "docker",
+  serviceType: "npm" | "docker" | "python",
   payload: Record<string, unknown>,
 ): Promise<void> {
   let id: string;
@@ -115,13 +117,25 @@ export async function processDockerJsonRequest(
   await submitJob(ctx, dockerServiceUrl, "docker", payload as Record<string, unknown>);
 }
 
+export async function processPythonUrlRequest(ctx: BotContext, name: string, version: string): Promise<void> {
+  const payload: Record<string, unknown> = { requirements: { [name]: version } };
+  await submitJob(ctx, pythonServiceUrl, "python", payload);
+}
+
+export async function processPythonPayloadRequest(
+  ctx: BotContext,
+  payload: { requirements?: Record<string, string>; devRequirements?: Record<string, string> },
+): Promise<void> {
+  await submitJob(ctx, pythonServiceUrl, "python", payload as Record<string, unknown>);
+}
+
 export const requestScene = new Scenes.WizardScene<BotContext>(
   REQUEST_SCENE_ID,
 
   // Step 1 — prompt for input
   async (ctx) => {
     await ctx.reply(
-      "Please send your package.json or docker JSON as a file, paste the JSON text, or send a package URL (npmjs.com or hub.docker.com).",
+      "Please send your package.json, docker JSON, or Python requirements as a file, paste JSON text, or send a package URL (npmjs.com, hub.docker.com, or pypi.org).",
     );
     return ctx.wizard.next();
   },
@@ -138,6 +152,12 @@ export const requestScene = new Scenes.WizardScene<BotContext>(
       const dockerParsed = parseDockerHubUrl(msg.text);
       if (dockerParsed) {
         await processDockerJsonRequest(ctx, dockerParsed);
+        return ctx.scene.leave();
+      }
+      const pypiParsed = parsePyPIUrl(msg.text);
+      if (pypiParsed) {
+        const [name, version] = Object.entries(pypiParsed.requirements)[0];
+        await processPythonUrlRequest(ctx, name, version);
         return ctx.scene.leave();
       }
     }
@@ -159,7 +179,7 @@ export const requestScene = new Scenes.WizardScene<BotContext>(
     }
 
     await ctx.reply(
-      "Could not parse input. Send a package.json, a docker JSON ({ images: [...] }), or a valid package URL.",
+      "Could not parse input. Send a package.json, a docker JSON ({ images: [...] }), a Python requirements file, or a valid package URL.",
     );
   },
 );

@@ -94,4 +94,3 @@ export const SECRET_PROMPT_STEP = async (ctx: BotContext) => {
   await ctx.reply("Enter the admin secret:");
   return ctx.wizard.next();
 };
-

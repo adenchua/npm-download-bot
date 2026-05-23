@@ -21,7 +21,8 @@ interface NotifyState {
 }
 
 function jobButtonLabel(job: JobDocument, client: ClientDocument): string {
-  const serviceTag = `[${job.serviceType ?? "npm"}]`;
+  const serviceTagMap: Record<string, string> = { npm: "[npm]", docker: "[docker]", python: "[python]" };
+  const serviceTag = serviceTagMap[job.serviceType ?? "npm"] ?? "[npm]";
   const handle = client.username ? ` (@${client.username})` : "";
   const date = format(job.startedAt, "dd MMM yyyy HH:mm");
   return `${serviceTag} ${job.jobId} — ${formatClientName(client)}${handle} [${date}]`;
@@ -86,7 +87,11 @@ export const notifyClientScene = new Scenes.WizardScene<BotContext>(
 
   // Step 3 — handle job selection, show Success / Failed buttons
   async (ctx) => {
-    const selectedJobId = await requireCallbackData(ctx, CALLBACK_PREFIXES.SELECT_JOB, "Please select a job from the list above.");
+    const selectedJobId = await requireCallbackData(
+      ctx,
+      CALLBACK_PREFIXES.SELECT_JOB,
+      "Please select a job from the list above.",
+    );
     if (selectedJobId === null) return;
 
     const selectedJob = await getJobByJobId(selectedJobId);
@@ -95,7 +100,9 @@ export const notifyClientScene = new Scenes.WizardScene<BotContext>(
       return ctx.scene.leave();
     }
     if (selectedJob.status) {
-      await ctx.reply(`Job \`${selectedJobId}\` has already been resolved as *${selectedJob.status}*.`, { parse_mode: "Markdown" });
+      await ctx.reply(`Job \`${selectedJobId}\` has already been resolved as *${selectedJob.status}*.`, {
+        parse_mode: "Markdown",
+      });
       return ctx.scene.leave();
     }
 
@@ -115,7 +122,11 @@ export const notifyClientScene = new Scenes.WizardScene<BotContext>(
 
   // Step 4 — handle outcome, update DB, notify client
   async (ctx) => {
-    const outcome = await requireCallbackData(ctx, CALLBACK_PREFIXES.SELECT_OUTCOME, "Please use the Success / Failed buttons above.");
+    const outcome = await requireCallbackData(
+      ctx,
+      CALLBACK_PREFIXES.SELECT_OUTCOME,
+      "Please use the Success / Failed buttons above.",
+    );
     if (outcome === null) return;
 
     const { selectedJobId } = ctx.wizard.state as NotifyState;
@@ -130,7 +141,9 @@ export const notifyClientScene = new Scenes.WizardScene<BotContext>(
       return ctx.scene.leave();
     }
     if (job.status) {
-      await ctx.reply(`Job \`${selectedJobId}\` has already been resolved as *${job.status}*.`, { parse_mode: "Markdown" });
+      await ctx.reply(`Job \`${selectedJobId}\` has already been resolved as *${job.status}*.`, {
+        parse_mode: "Markdown",
+      });
       return ctx.scene.leave();
     }
 
