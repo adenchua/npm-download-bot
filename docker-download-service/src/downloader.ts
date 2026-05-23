@@ -281,10 +281,18 @@ async function pullAndSave(image: ResolvedImage, outputDir: string, jobId: strin
       // Confirmed clean — no CVEs to patch, skip Copa and post-scan entirely.
       hardenResult = { hardened: true, patchedPackageCount: 0 };
       audit = preScanCounts;
-      try { unlinkSync(reportPath); } catch { /* best-effort cleanup of temp trivy report */ }
+      try {
+        unlinkSync(reportPath);
+      } catch {
+        /* best-effort cleanup of temp trivy report */
+      }
     } else {
       hardenResult = await runCopaPatch(workingRef, reportPath, copaTag);
-      try { unlinkSync(reportPath); } catch { /* best-effort cleanup of temp trivy report */ }
+      try {
+        unlinkSync(reportPath);
+      } catch {
+        /* best-effort cleanup of temp trivy report */
+      }
       if (hardenResult.patchedTag) {
         try {
           // Re-tag the patched image as workingRef so docker save / docker load preserve the user-facing tag.
@@ -293,7 +301,9 @@ async function pullAndSave(image: ResolvedImage, outputDir: string, jobId: strin
           // Copa exited 0 but the patched tag is not in the Docker daemon image store
           // (seen with copa 0.14.x — image may land in BuildKit containerd store instead).
           // Fall back to the original unpatched image so the download still succeeds.
-          logger.error(`[copa] patched tag ${hardenResult.patchedTag} not found after copa exited 0 — saving unpatched image`);
+          logger.error(
+            `[copa] patched tag ${hardenResult.patchedTag} not found after copa exited 0 — saving unpatched image`,
+          );
           hardenResult = { hardened: false, hardenReason: "copa exited 0 but output tag not found in Docker daemon" };
         }
       }
@@ -403,7 +413,7 @@ export async function downloadAndZip(images: ResolvedImage[], jobId: string): Pr
       archive.file(result.tarPath, { name: result.metadata.tarball });
     }
 
-    archive.finalize();
+    void archive.finalize();
   });
 
   // Remove individual tar files now that they are bundled

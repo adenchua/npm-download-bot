@@ -40,7 +40,7 @@ const stage = new Scenes.Stage<BotContext>([
 bot.use(session());
 
 bot.command("cancel", async (ctx) => {
-  const wizardSession = ctx.session as Scenes.WizardSession;
+  const wizardSession = ctx.session;
   if (wizardSession.__scenes?.current) {
     delete wizardSession.__scenes.current;
     await ctx.reply("Conversation cancelled.");
@@ -82,7 +82,7 @@ bot.command("request", async (ctx) => {
 });
 
 bot.on("message", async (ctx) => {
-  const wizardSession = ctx.session as Scenes.WizardSession;
+  const wizardSession = ctx.session;
   if (wizardSession.__scenes?.current) return;
 
   const msg = ctx.message;
@@ -93,7 +93,7 @@ bot.on("message", async (ctx) => {
   const pypiUrlParsed = "text" in msg && !npmUrlParsed && !dockerUrlParsed ? parsePyPIUrl(msg.text) : null;
   if (!isDocument && !isJsonText && !npmUrlParsed && !dockerUrlParsed && !pypiUrlParsed) return;
 
-  const client = await getClientByTelegramId(ctx.from!.id);
+  const client = await getClientByTelegramId(ctx.from.id);
   if (!client) {
     await ctx.reply("You are not registered. Use /register first.");
     return;
@@ -192,7 +192,7 @@ async function main() {
   await ensureClientIndexes();
   await ensureSubscriberIndexes();
   await ensureJobIndexes();
-  bot.launch();
+  void bot.launch();
   logger.log("Telegram bot is running");
 }
 
@@ -201,7 +201,11 @@ async function shutdown(signal: string) {
   await closeDb();
 }
 
-process.once("SIGINT", () => shutdown("SIGINT"));
-process.once("SIGTERM", () => shutdown("SIGTERM"));
+process.once("SIGINT", () => {
+  void shutdown("SIGINT");
+});
+process.once("SIGTERM", () => {
+  void shutdown("SIGTERM");
+});
 
-main();
+void main();

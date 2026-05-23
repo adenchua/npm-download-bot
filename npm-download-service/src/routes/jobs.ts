@@ -10,7 +10,7 @@ import { logger } from "../logger";
 export const jobsRouter = Router();
 
 // POST /jobs — fire-and-forget download job
-jobsRouter.post("/", async (req: Request, res: Response) => {
+jobsRouter.post("/", (req: Request, res: Response) => {
   const INPUT_DIR = resolve("input");
   const { id } = req.body as { id?: string };
 

@@ -22,7 +22,7 @@ export function parseAndValidatePackageJson(text: string): Record<string, unknow
     const val = pkg[field];
     if (val === undefined) continue;
     if (typeof val !== "object" || val === null || Array.isArray(val)) return null;
-    if (Object.values(val as object).some((v) => typeof v !== "string")) return null;
+    if (Object.values(val).some((v) => typeof v !== "string")) return null;
   }
   return Object.fromEntries(
     (["name", "version", "dependencies", "devDependencies", "peerDependencies"] as const)

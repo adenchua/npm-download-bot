@@ -114,7 +114,7 @@ export async function processDockerJsonRequest(
   ctx: BotContext,
   payload: { images: string[]; platform: string },
 ): Promise<void> {
-  await submitJob(ctx, dockerServiceUrl, "docker", payload as Record<string, unknown>);
+  await submitJob(ctx, dockerServiceUrl, "docker", payload);
 }
 
 export async function processPythonUrlRequest(ctx: BotContext, name: string, version: string): Promise<void> {
@@ -126,7 +126,7 @@ export async function processPythonPayloadRequest(
   ctx: BotContext,
   payload: { requirements?: Record<string, string>; devRequirements?: Record<string, string> },
 ): Promise<void> {
-  await submitJob(ctx, pythonServiceUrl, "python", payload as Record<string, unknown>);
+  await submitJob(ctx, pythonServiceUrl, "python", payload);
 }
 
 export const requestScene = new Scenes.WizardScene<BotContext>(

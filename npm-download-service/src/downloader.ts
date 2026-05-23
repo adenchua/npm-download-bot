@@ -109,6 +109,6 @@ function createTgz(tgzDir: string, metadata: PackageMetadata, tgzPath: string): 
       name: "metadata.json",
     });
 
-    archive.finalize();
+    void archive.finalize();
   });
 }

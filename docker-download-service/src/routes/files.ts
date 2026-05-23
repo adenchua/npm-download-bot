@@ -10,7 +10,7 @@ import { ALLOWED_PLATFORMS, MAX_IMAGES, validateImageName } from "../resolver";
 export const filesRouter = Router();
 
 // POST /upload — body is a docker payload { images, platform? }
-filesRouter.post("/upload", async (req: Request, res: Response) => {
+filesRouter.post("/upload", (req: Request, res: Response) => {
   const INPUT_DIR = resolve("input");
   const body = req.body as DockerPayload;
 
@@ -38,12 +38,16 @@ filesRouter.post("/upload", async (req: Request, res: Response) => {
 
   const platform = typeof body.platform === "string" ? body.platform : "linux/amd64";
   if (!ALLOWED_PLATFORMS.has(platform)) {
-    res.status(422).json({ error: `Unsupported platform: "${platform}". Allowed: ${[...ALLOWED_PLATFORMS].join(", ")}` });
+    res
+      .status(422)
+      .json({ error: `Unsupported platform: "${platform}". Allowed: ${[...ALLOWED_PLATFORMS].join(", ")}` });
     return;
   }
 
   const datePrefix = format(new Date(), "yyyyMMdd");
-  const todayCount = readdirSync(INPUT_DIR).filter((file) => file.startsWith(datePrefix) && file.endsWith(".json")).length;
+  const todayCount = readdirSync(INPUT_DIR).filter(
+    (file) => file.startsWith(datePrefix) && file.endsWith(".json"),
+  ).length;
   const id = `${datePrefix}-${format(new Date(), "HHmm")}-${todayCount + 1}`;
 
   const sanitized: DockerPayload = {
@@ -57,7 +61,7 @@ filesRouter.post("/upload", async (req: Request, res: Response) => {
 
 // GET /files — list all uploaded docker payload files
 // Query params: showToday=true — only return files created today
-filesRouter.get("/files", async (req: Request, res: Response) => {
+filesRouter.get("/files", (req: Request, res: Response) => {
   const INPUT_DIR = resolve("input");
   const showToday = req.query.showToday === "true";
 

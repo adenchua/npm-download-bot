@@ -9,7 +9,7 @@ import { validatePayload } from "../resolver";
 
 export const filesRouter = Router();
 
-filesRouter.post("/upload", async (req: Request, res: Response) => {
+filesRouter.post("/upload", (req: Request, res: Response) => {
   const INPUT_DIR = resolve("input");
   const body = req.body as PythonPayload;
 
@@ -37,7 +37,7 @@ filesRouter.post("/upload", async (req: Request, res: Response) => {
   res.status(201).json({ id });
 });
 
-filesRouter.get("/files", async (req: Request, res: Response) => {
+filesRouter.get("/files", (req: Request, res: Response) => {
   const INPUT_DIR = resolve("input");
   const showToday = req.query.showToday === "true";
 

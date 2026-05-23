@@ -12,7 +12,7 @@ const NPM_PACKAGE_NAME_REGEX = /^(?:@[a-z0-9-][a-z0-9-._]*\/)?[a-z0-9][a-z0-9-._
 export const filesRouter = Router();
 
 // POST /upload — body is a package.json object
-filesRouter.post("/upload", async (req: Request, res: Response) => {
+filesRouter.post("/upload", (req: Request, res: Response) => {
   const INPUT_DIR = resolve("input");
   const body = req.body as PackageJson;
 
@@ -68,7 +68,7 @@ filesRouter.post("/upload", async (req: Request, res: Response) => {
 
 // GET /files — list all uploaded package.json files
 // Query params: showToday=true — only return files created today
-filesRouter.get("/files", async (req: Request, res: Response) => {
+filesRouter.get("/files", (req: Request, res: Response) => {
   const INPUT_DIR = resolve("input");
   const showToday = req.query.showToday === "true";
 

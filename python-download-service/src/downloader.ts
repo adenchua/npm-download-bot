@@ -2,21 +2,13 @@ import archiver from "archiver";
 import { formatISO } from "date-fns";
 import pLimit from "p-limit";
 
-import {
-  createWriteStream,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "fs";
+import { createWriteStream, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 
-import { AuditSeverityCounts, DownloadTarget, FailedTarget, PythonMetadata, PythonPayload } from "./types";
+import { AuditSeverityCounts, FailedTarget, PythonMetadata, PythonPayload } from "./types";
 import { resolveTargets } from "./resolver";
 import { logger } from "./logger";
 
@@ -105,8 +97,11 @@ export async function downloadAndBundle(id: string, payload: PythonPayload): Pro
         succeededTargets++;
         logger.log(`  ✓ ${target.platform} / Python ${target.pythonVersion}`);
       } else {
-        const err = result.reason;
-        const stderr = err instanceof Error && "stderr" in err ? String((err as NodeJS.ErrnoException & { stderr: string }).stderr) : "";
+        const err: unknown = result.reason;
+        const stderr =
+          err instanceof Error && "stderr" in err
+            ? String((err as NodeJS.ErrnoException & { stderr: string }).stderr)
+            : "";
         const errorLines = stderr.split("\n").filter((line) => line.startsWith("ERROR:"));
         const pipError = errorLines[errorLines.length - 1] ?? "";
         const rawMessage = pipError || (err instanceof Error ? err.message.split("\n")[0] : String(err));
@@ -156,14 +151,14 @@ async function runPipAudit(requirementsPath: string): Promise<AuditSeverityCount
   const zeroCounts: AuditSeverityCounts = { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 };
 
   try {
-    const { stdout } = await execFileAsync("pip-audit", ["-r", requirementsPath, "--format", "json"], { timeout: 60_000 }).catch(
-      (err: unknown) => {
-        if (err instanceof Error && "stdout" in err) {
-          return { stdout: (err as NodeJS.ErrnoException & { stdout: string }).stdout };
-        }
-        throw err;
-      },
-    );
+    const { stdout } = await execFileAsync("pip-audit", ["-r", requirementsPath, "--format", "json"], {
+      timeout: 60_000,
+    }).catch((err: unknown) => {
+      if (err instanceof Error && "stdout" in err) {
+        return { stdout: (err as NodeJS.ErrnoException & { stdout: string }).stdout };
+      }
+      throw err;
+    });
 
     const output = JSON.parse(stdout) as PipAuditOutput;
     const counts = { ...zeroCounts };
@@ -202,6 +197,6 @@ function createTgz(sourceDir: string, metadata: PythonMetadata, tgzPath: string)
 
     archive.append(JSON.stringify(metadata, null, 2), { name: "metadata.json" });
 
-    archive.finalize();
+    void archive.finalize();
   });
 }

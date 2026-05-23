@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile);
 
 export async function resolveAllDependencies(packageJsonPath: string): Promise<ResolverResult> {
   const raw = readFileSync(packageJsonPath, "utf-8");
-  const parsed: PackageJson = JSON.parse(raw);
+  const parsed = JSON.parse(raw) as PackageJson;
 
   const merged: Record<string, string> = {
     ...parsed.dependencies,
@@ -88,7 +88,7 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
       const pkgJsonPath = join(pkgDir, "package.json");
       if (existsSync(pkgJsonPath)) {
         try {
-          const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
+          const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8")) as { name?: string; version?: string };
           if (pkg.name && pkg.version) {
             addIfNew(pkg.name, pkg.version);
           }
@@ -125,7 +125,10 @@ export async function resolveAllDependencies(packageJsonPath: string): Promise<R
       const pkgJsonPath = join(pkgDir, "package.json");
       if (!existsSync(pkgJsonPath)) continue;
       try {
-        const pkgData = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
+        const pkgData = JSON.parse(readFileSync(pkgJsonPath, "utf-8")) as {
+          peerDependencies?: Record<string, string>;
+          peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+        };
         const peerDeps: Record<string, string> = pkgData.peerDependencies ?? {};
         const peerMeta: Record<string, { optional?: boolean }> = pkgData.peerDependenciesMeta ?? {};
         for (const [peerName, peerRange] of Object.entries(peerDeps)) {
@@ -254,7 +257,7 @@ export async function resolveVersionRange(packageName: string, versionRange: str
       maxBuffer: 10 * 1024 * 1024,
       timeout: 30_000,
     });
-    const versions: string[] = JSON.parse(stdout);
+    const versions = JSON.parse(stdout) as string[];
     return semver.maxSatisfying(versions, versionRange);
   } catch {
     return null;
